@@ -1,87 +1,150 @@
 # adl200a-mqtt
 
-A small, robust Linux **systemd service** that polls an **ACE Instrument ADL-200A**
-geotechnical data logger over RS-232 and publishes the readings to a local **MQTT**
-broker as JSON.
+Небольшой надёжный **systemd-сервис** для Linux: опрашивает геотехнический
+даталоггер **ACE Instrument ADL-200A** по RS-232 и публикует показания в локальный
+**MQTT**-брокер в формате JSON.
 
-The ADL-200A speaks an undocumented, proprietary ASCII protocol. It was
-reverse-engineered from the vendor's `ADL2Pro.exe` and confirmed against real
-hardware — see **[PROTOCOL.md](PROTOCOL.md)** for the full command set.
+Протокол ADL-200A недокументирован и проприетарен — он был реверс-инжинирен из
+фирменной программы `ADL2Pro.exe` и подтверждён на живом железе. Полное описание —
+в **[PROTOCOL.md](PROTOCOL.md)**.
 
-## What it does
+## Что делает
 
-- Opens the serial port (persistent, auto-reconnecting).
-- Every `ADL200A_INTERVAL` seconds sends `MEA` (measure all channels, ~26 s).
-- Parses the per-channel `MES` frames and publishes JSON to MQTT.
-- Logs to `stdout` (journald under systemd).
+- Держит постоянное соединение с портом (с автопереподключением).
+- Раз в `ADL200A_INTERVAL` секунд шлёт `MEA` (измерение всех каналов, ~26 с).
+- Разбирает покадровый ответ `MES` и публикует JSON в MQTT.
+- Пишет лог в `stdout` (под systemd — в journald).
 
-## Hardware
+## Железо
 
-The logger's host port is **RS-232, 38400 8N1**. Two tested setups:
+Хост-порт логгера — **RS-232, 38400 8N1**. Две проверенные конфигурации:
 
-| Host | Adapter | Serial device | Notes |
-|------|---------|---------------|-------|
-| x86 PC (e.g. Dell Wyse) | Moxa UPort 1150 (USB↔RS-232) | `/dev/ttyUSB0` | needs `moxa-1150.fw` (`firmware-misc-nonfree`) + the `mxu11x0` driver; the service sets RS-232 mode automatically |
-| ARM SBC | native SoC UART wired to an RS-232 transceiver | `/dev/ttyS0`, … | works out of the box |
+| Хост | Адаптер | Устройство | Примечания |
+|------|---------|-----------|------------|
+| x86 ПК (напр. Dell Wyse) | Moxa UPort 1150 (USB↔RS-232) | `/dev/ttyUSB0` | нужна прошивка `moxa-1150.fw` (`firmware-misc-nonfree`) + драйвер `mxu11x0`; RS-232-режим сервис ставит сам |
+| ARM SBC (напр. UVON) | нативный UART SoC через RS-232-трансивер | `/dev/ttyS0`, … | работает из коробки, драйверов не надо |
 
-> RS-232 is point-to-point — the logger talks to one host at a time.
+> RS-232 — точка-точка: логгер общается с одним хостом за раз.
 
-## Install
+## Установка
 
 ```sh
 sudo ./install.sh
-sudo editor /etc/default/adl200a        # set ADL200A_PORT to your serial device
+sudo nano /etc/default/adl200a        # указать ADL200A_PORT — свой порт
 sudo systemctl enable --now adl200a
 ```
 
-`install.sh` installs the deps (`python3-serial`, `python3-paho-mqtt`, `mosquitto`),
-copies the files to `/opt/adl200a`, drops the config at `/etc/default/adl200a`, and
-registers the service.
+`install.sh` ставит зависимости (`python3-serial`, `python3-paho-mqtt`,
+`mosquitto`), копирует файлы в `/opt/adl200a`, кладёт конфиг
+`/etc/default/adl200a` и регистрирует сервис.
 
-## Configuration — `/etc/default/adl200a`
+### Запуск на UVON (ARM, нативный RS-232)
 
-| Var | Default | Meaning |
-|-----|---------|---------|
-| `ADL200A_PORT` | `/dev/ttyUSB0` | serial device the logger is on |
-| `ADL200A_BAUD` | `38400` | baud rate |
-| `ADL200A_ID` | `1` | Logger ID |
-| `ADL200A_INTERVAL` | `60` | seconds between measurement cycles |
-| `ADL200A_MQTT_HOST` / `_PORT` | `127.0.0.1` / `1883` | MQTT broker |
-| `ADL200A_TOPIC` | `adl200a` | MQTT topic prefix |
-
-## Usage
+Драйверов не нужно — UART SoC уже является RS-232-портом.
 
 ```sh
-# live data
-mosquitto_sub -h 127.0.0.1 -t 'adl200a/#' -v
-# service status / logs
-systemctl status adl200a ; journalctl -u adl200a -f
-# one-off command (stop the service first, the port is exclusive)
-systemctl stop adl200a && python3 /opt/adl200a/ace.py MEA
+# 1. установка (зависимости + файлы + сервис)
+sudo ./install.sh
+
+# 2. указать порт, к которому подключён ADL-200A (ttyS0, ttyS1, …)
+sudo sed -i 's#^ADL200A_PORT=.*#ADL200A_PORT=/dev/ttyS0#' /etc/default/adl200a
+
+# 3. запустить и включить автозапуск
+sudo systemctl enable --now adl200a
+
+# 4. смотреть лог
+journalctl -u adl200a -f
 ```
 
-### MQTT topics
+Проверить, что логгер отвечает (сервис держит порт монопольно — сначала остановить):
 
-- `adl200a/ch/<NN>` — one message per channel:
-  ```json
-  {"channel": 4, "values": {"t01": 87081, "t06": 2956},
-   "dev_date": "01/01/01", "dev_time": "01:29:16",
-   "timestamp": "2026-09-22T17:15:29+00:00"}
-  ```
-- `adl200a/measurement` — the whole 16-channel cycle in one message.
+```sh
+sudo systemctl stop adl200a
+ADL200A_PORT=/dev/ttyS0 python3 /opt/adl200a/ace.py GTT     # должен вернуть время
+sudo systemctl start adl200a
+```
 
-`t01` is the primary reading (vibrating-wire digits/frequency); `t06` is the
-secondary (temperature). Scale to engineering units with your sensor calibration.
+> Если `ttyS*` на плате — это **TTL-UART 3.3 В** (гребёнка), а не полноценный RS-232
+> (±12 В на трансивере), напрямую к логгеру подключать нельзя — нужен модуль
+> **MAX3232** между UART и RS-232 логгера.
 
-## Files
+## Конфигурация — `/etc/default/adl200a`
 
-- `adl200a_mqtt.py` — the daemon
-- `ace.py` — CLI to send one ACE command (`ace.py GTT`, `ace.py MEA`, …)
-- `sniffer.py` — generic raw-hex serial probe
-- `prestart.sh` — sets RS-232 mode on a Moxa UPort 1150 (no-op elsewhere)
-- `adl200a.service` / `adl200a.default` — systemd unit + config template
-- `install.sh` — installer
+| Переменная | По умолчанию | Значение |
+|-----------|--------------|----------|
+| `ADL200A_PORT` | `/dev/ttyUSB0` | последовательный порт логгера |
+| `ADL200A_BAUD` | `38400` | скорость |
+| `ADL200A_ID` | `1` | Logger ID |
+| `ADL200A_INTERVAL` | `60` | секунд между циклами измерения |
+| `ADL200A_MQTT_HOST` / `_PORT` | `127.0.0.1` / `1883` | MQTT-брокер |
+| `ADL200A_TOPIC` | `adl200a` | префикс MQTT-топиков |
 
-## License
+После правки конфига: `sudo systemctl restart adl200a`.
 
-MIT — see [LICENSE](LICENSE).
+## Как забрать данные из сервиса
+
+Демон публикует в локальный MQTT-брокер (mosquitto). Забрать может что угодно,
+что умеет MQTT: дашборд, Node-RED, Home Assistant, Telegraf/InfluxDB или свой
+скрипт.
+
+### Доступны ли все каналы? — Да, все 16
+
+Каждый цикл шлёт `MEA`, а он измеряет **все 16 каналов**, поэтому сервис публикует
+их все за раз — по одному сообщению на канал плюс одно общее:
+
+- `adl200a/ch/01` … `adl200a/ch/16` — по каналу;
+- `adl200a/measurement` — весь цикл одним JSON.
+
+У каждого канала два значения: `t01` — основное (струнный датчик, VW-отсчёт) и
+`t06` — вторичное (температура). Каналы без подключённого датчика тоже отдают
+значение (обрыв/холостой ход ≈ 490000–496000 по `t06`), так что фильтруй нужные
+(на стенде реальный датчик — на **канале 04**).
+
+### Из консоли
+
+```sh
+mosquitto_sub -h 127.0.0.1 -t 'adl200a/#' -v          # всё
+mosquitto_sub -h 127.0.0.1 -t 'adl200a/ch/04' -v      # один канал
+mosquitto_sub -h 127.0.0.1 -t 'adl200a/measurement' -v  # весь цикл
+```
+
+### Из кода (Python)
+
+Готовый пример — [`examples/subscribe.py`](examples/subscribe.py):
+
+```sh
+python3 examples/subscribe.py                 # локально
+python3 examples/subscribe.py 100.71.138.46   # с другого хоста (см. ниже)
+```
+
+### С другой машины
+
+По умолчанию mosquitto слушает только `localhost`. Чтобы читать данные удалённо:
+- запусти консьюмер на самом хосте логгера, **или**
+- пробрось порт: `ssh -L 1883:127.0.0.1:1883 uvon-debian`, затем подключайся к
+  `127.0.0.1:1883` у себя, **или**
+- настрой в mosquitto внешний listener / bridge.
+
+### Формат сообщения (топик `adl200a/ch/NN`)
+
+```json
+{"channel": 4, "values": {"t01": 87081, "t06": 2956},
+ "dev_date": "01/01/01", "dev_time": "01:29:16",
+ "timestamp": "2026-09-22T17:15:29+00:00"}
+```
+
+`t01`/`t06` — сырые отсчёты; в инженерные единицы переводить по калибровке датчика.
+
+## Файлы
+
+- `adl200a_mqtt.py` — демон;
+- `ace.py` — CLI для одной ACE-команды (`ace.py GTT`, `ace.py MEA`, …);
+- `sniffer.py` — низкоуровневый hex-пробник порта;
+- `prestart.sh` — ставит RS-232-режим на Moxa UPort 1150 (на прочих портах — ничего);
+- `adl200a.service` / `adl200a.default` — systemd-юнит + шаблон конфига;
+- `install.sh` — установщик;
+- `examples/subscribe.py` — пример MQTT-консьюмера.
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).
