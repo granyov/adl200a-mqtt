@@ -1,0 +1,24 @@
+# adl200a.service  ->  /etc/systemd/system/adl200a.service
+# Installed by install.sh (which substitutes __USER__). Config: /etc/default/adl200a
+[Unit]
+Description=ACE ADL-200A data logger to MQTT
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=dialout
+EnvironmentFile=/etc/default/adl200a
+# Moxa UPort 1150 -> force RS-232 mode; no-op on native ports ('+' = run as root)
+ExecStartPre=+/opt/adl200a/prestart.sh
+WorkingDirectory=/opt/adl200a
+ExecStart=/usr/bin/env python3 /opt/adl200a/adl200a_mqtt.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=adl200a
+
+[Install]
+WantedBy=multi-user.target

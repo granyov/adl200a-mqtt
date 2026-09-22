@@ -1,0 +1,15 @@
+# /etc/default/adl200a — configuration for the ADL-200A -> MQTT service.
+# Edit ADL200A_PORT to match how the logger is wired, then: systemctl restart adl200a
+
+# Serial port the ADL-200A RS-232 is connected to:
+#   Moxa UPort 1150 (USB)  -> /dev/ttyUSB0   (RS-232 mode set automatically)
+#   native RS-232 (SoC)    -> /dev/ttyS0, /dev/ttyS1, ...
+ADL200A_PORT=/dev/ttyUSB0
+
+ADL200A_BAUD=38400
+ADL200A_ID=1
+ADL200A_INTERVAL=60
+
+ADL200A_MQTT_HOST=127.0.0.1
+ADL200A_MQTT_PORT=1883
+ADL200A_TOPIC=adl200a
