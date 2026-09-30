@@ -113,15 +113,17 @@ Published 2 channels (196 raw bytes)
 Какие каналы опрашивать, решает сам прибор. Посмотреть и поменять:
 
 ```sh
-sudo systemctl stop adl200a                       # порт занят службой
 python3 /opt/adl200a/channels.py --show           # только посмотреть
 python3 /opt/adl200a/channels.py --enable-all     # сухой прогон: что будет послано
 python3 /opt/adl200a/channels.py --enable-all --yes   # записать в прибор
-sudo systemctl start adl200a
 ```
 
-Без `--yes` в прибор ничего не пишется. Перед записью снимается копия конфигурации
-(`/var/lib/adl200a/gcc-backup.txt`), вернуть всё как было:
+Порт занят службой — инструмент останавливает её сам и возвращает на выходе,
+в том числе при ошибке (`--no-service`, чтобы не трогал).
+
+Без `--yes` в прибор ничего не пишется. Копия конфигурации снимается **только
+перед настоящей записью**, так что до первой записи возвращать нечего. После
+записи вернуть всё как было:
 
 ```sh
 python3 /opt/adl200a/channels.py --restore /var/lib/adl200a/gcc-backup.txt --yes

@@ -11,12 +11,11 @@ MEA разворачивает только те каналы, что включ
 
     канал, использовать(0/1), тип(1=VW, 2=аналог), температура(0/1), пар5, пар6
 
-Порт занят службой, поэтому её надо остановить:
+Порт занят службой — инструмент останавливает её сам и возвращает на выходе,
+в том числе при ошибке:
 
-    sudo systemctl stop adl200a
     python3 channels.py --show
     python3 channels.py --enable-all --yes
-    sudo systemctl start adl200a
 
 Без --yes ничего не пишется — печатаются только кадры, которые были бы посланы.
 Перед любой записью снимается резервная копия (--backup, по умолчанию
@@ -25,13 +24,24 @@ MEA разворачивает только те каналы, что включ
 import argparse
 import os
 import re
+import subprocess
 import sys
 import time
 
 import serial
 
+SERVICE = "adl200a"
+
 GCC = re.compile(r"<<!\d+,\d+,GCC:(\d+),(\d+),(\d+),(\d+),(\d+),(\d+);")
 DEFAULT_BACKUP = "/var/lib/adl200a/gcc-backup.txt"
+
+
+def systemctl(*args):
+    cmd = ["systemctl"] + list(args) + [SERVICE]
+    if os.geteuid() != 0:
+        cmd = ["sudo", "-n"] + cmd
+    with open(os.devnull, "w") as null:
+        return subprocess.call(cmd, stdout=null, stderr=null) == 0
 
 
 def talk(ser, cmd, wait=3.0, idle=0.8):
@@ -116,9 +126,41 @@ def main():
     ap.add_argument("--save", action="store_true",
                     help="послать SVE (сохранить в приборе); проверено не было")
     ap.add_argument("--yes", action="store_true", help="действительно писать в прибор")
+    ap.add_argument("--no-service", action="store_true",
+                    help="не трогать службу adl200a (порт освободи сам)")
     ARGS = ap.parse_args()
 
-    ser = serial.Serial(ARGS.port, ARGS.baud, bytesize=8, parity="N", stopbits=1, timeout=0.5)
+    # Читаем копию ДО того, как трогать службу и порт: если файла нет,
+    # незачем останавливать сервис ради заведомо неудачного запуска.
+    restore = {}
+    if ARGS.restore:
+        if not os.path.exists(ARGS.restore):
+            raise SystemExit(
+                "файла с копией нет: %s\n"
+                "Копия появляется только после записи с --yes, а её ещё не было —\n"
+                "значит и возвращать нечего. Посмотреть, что в приборе: --show" % ARGS.restore)
+        for line in open(ARGS.restore):
+            m = GCC.search(line)
+            if m:
+                restore[int(m.group(1))] = tuple(int(x) for x in m.groups()[1:])
+        if not restore:
+            raise SystemExit("в файле %s нет строк GCC" % ARGS.restore)
+
+    stopped = False
+    if not ARGS.no_service and systemctl("is-active", "--quiet"):
+        print("останавливаю службу %s на время работы..." % SERVICE)
+        if not systemctl("stop"):
+            raise SystemExit("не смог остановить службу — порт останется занят")
+        stopped = True
+
+    try:
+        ser = serial.Serial(ARGS.port, ARGS.baud, bytesize=8,
+                            parity="N", stopbits=1, timeout=0.5)
+    except serial.SerialException as e:
+        if stopped:
+            systemctl("start")
+        raise SystemExit("порт %s не открылся: %s" % (ARGS.port, e))
+
     try:
         cfg, lines = read_config(ser)
         if not cfg:
@@ -129,15 +171,8 @@ def main():
         if ARGS.show:
             return
 
-        targets = {}
-        if ARGS.restore:
-            for line in open(ARGS.restore):
-                m = GCC.search(line)
-                if m:
-                    targets[int(m.group(1))] = tuple(int(x) for x in m.groups()[1:])
-            if not targets:
-                raise SystemExit("в файле %s нет строк GCC" % ARGS.restore)
-        else:
+        targets = dict(restore)
+        if not ARGS.restore:
             tmpl = tuple(int(x) for x in ARGS.template.split(","))
             if len(tmpl) != 5:
                 raise SystemExit("--template ожидает 5 чисел")
@@ -186,6 +221,11 @@ def main():
                 print("вернуть как было: python3 %s --restore %s --yes" % (sys.argv[0], saved))
     finally:
         ser.close()
+        if stopped:
+            print("\nвозвращаю службу %s..." % SERVICE)
+            if not systemctl("start"):
+                print("ВНИМАНИЕ: служба не поднялась, запусти вручную: "
+                      "sudo systemctl start %s" % SERVICE)
 
 
 if __name__ == "__main__":
