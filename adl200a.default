@@ -13,3 +13,7 @@ ADL200A_INTERVAL=60
 ADL200A_MQTT_HOST=127.0.0.1
 ADL200A_MQTT_PORT=1883
 ADL200A_TOPIC=adl200a
+
+# Sensor calibration, one entry per logger channel (see sensors.example.json).
+# Without this file the service publishes raw counts only.
+ADL200A_SENSORS=/etc/adl200a/sensors.json

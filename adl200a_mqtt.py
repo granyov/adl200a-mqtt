@@ -16,6 +16,11 @@ Env vars (defaults in parentheses):
   ADL200A_PORT (/dev/ttyUSB0)  ADL200A_BAUD (38400)  ADL200A_ID (1)
   ADL200A_INTERVAL (60)        ADL200A_MQTT_HOST (127.0.0.1)
   ADL200A_MQTT_PORT (1883)     ADL200A_TOPIC (adl200a)
+  ADL200A_SENSORS (/etc/adl200a/sensors.json)
+
+With a sensors file present, each channel payload also carries an "eng" object
+(pressure, temperature, frequency) and the scalars are mirrored to
+<topic>/ch/<NN>/{pressure,temperature,frequency,digits} for plain consumers.
 """
 import json
 import logging
@@ -28,6 +33,9 @@ from datetime import datetime, timezone
 import serial
 import paho.mqtt.client as mqtt
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import calibration
+
 PORT = os.environ.get("ADL200A_PORT", "/dev/ttyUSB0")
 BAUD = int(os.environ.get("ADL200A_BAUD", "38400"))
 LOGGER_ID = int(os.environ.get("ADL200A_ID", "1"))
@@ -35,6 +43,7 @@ POLL_INTERVAL = int(os.environ.get("ADL200A_INTERVAL", "60"))
 MQTT_HOST = os.environ.get("ADL200A_MQTT_HOST", "127.0.0.1")
 MQTT_PORT = int(os.environ.get("ADL200A_MQTT_PORT", "1883"))
 TOPIC = os.environ.get("ADL200A_TOPIC", "adl200a")
+SENSORS_FILE = os.environ.get("ADL200A_SENSORS", "/etc/adl200a/sensors.json")
 
 MEA_MAX_SECONDS = 45        # hard cap on one MEA read
 MEA_IDLE_DONE = 3.0         # s of silence after data => cycle complete
@@ -117,9 +126,47 @@ def parse(buf: bytes) -> dict:
     return chans
 
 
+_last_status = {}
+
+
+def enrich(chans: dict, sensors: dict) -> None:
+    """Attach engineering units to every channel that has a calibration."""
+    for ch, data in chans.items():
+        sensor = sensors.get(ch)
+        if sensor is None:
+            continue
+        before = sensor.resolved_unit
+        eng = sensor.convert(data["values"].get("t01"), data["values"].get("t06"))
+        data["eng"] = eng
+        if sensor.resolved_unit and sensor.resolved_unit != before:
+            log.info("ch %02d: TYPE 01 reads as %s -> %.2f Hz",
+                     ch, sensor.resolved_unit, eng.get("frequency_hz", float("nan")))
+        if _last_status.get(ch) != eng["status"]:
+            _last_status[ch] = eng["status"]
+            level = log.info if eng["status"] == "ok" else log.warning
+            level("ch %02d (%s): %s%s", ch, sensor.name, eng["status"],
+                  " - " + eng["note"] if eng.get("note") else "")
+
+
+def publish_channel(client, ch: int, payload: dict) -> None:
+    base = "%s/ch/%02d" % (TOPIC, ch)
+    client.publish(base, json.dumps(payload), qos=0)
+    eng = payload.get("eng") or {}
+    for key, leaf in (("pressure", "pressure"), ("temperature_c", "temperature"),
+                      ("frequency_hz", "frequency"), ("digits", "digits")):
+        if eng.get(key) is not None:
+            client.publish("%s/%s" % (base, leaf), json.dumps(eng[key]), qos=0)
+
+
 def main() -> None:
     log.info("ADL-200A -> MQTT | port=%s baud=%d id=%d interval=%ds mqtt=%s:%d topic=%s",
              PORT, BAUD, LOGGER_ID, POLL_INTERVAL, MQTT_HOST, MQTT_PORT, TOPIC)
+    sensors = calibration.load_sensors(SENSORS_FILE)
+    if sensors:
+        log.info("Calibration from %s: %s", SENSORS_FILE, ", ".join(
+            "ch%02d=%s" % (c, sensors[c].name) for c in sorted(sensors)))
+    else:
+        log.info("No calibration in %s - publishing raw counts only", SENSORS_FILE)
     client = make_mqtt()
     ser = open_serial()
     while True:
@@ -128,11 +175,12 @@ def main() -> None:
             raw = measure(ser)
             chans = parse(raw)
             if chans:
+                enrich(chans, sensors)
                 ts = datetime.now(timezone.utc).isoformat()
                 for ch in sorted(chans):
                     payload = dict(chans[ch])
                     payload["timestamp"] = ts
-                    client.publish("%s/ch/%02d" % (TOPIC, ch), json.dumps(payload), qos=0)
+                    publish_channel(client, ch, payload)
                 client.publish("%s/measurement" % TOPIC, json.dumps(
                     {"timestamp": ts, "channels": [chans[c] for c in sorted(chans)]}), qos=0)
                 log.info("Published %d channels (%d raw bytes)", len(chans), len(raw))
