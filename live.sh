@@ -71,7 +71,21 @@ command -v stdbuf >/dev/null && STDBUF="stdbuf -oL"
 PYHELPER=$(mktemp "${TMPDIR:-/tmp}/adl200a-live.XXXXXX.py")
 PYPOLLER=$(mktemp "${TMPDIR:-/tmp}/adl200a-poll.XXXXXX.py")
 WAS_ACTIVE=0
+CLEANED=0
 cleanup() {
+    [ "$CLEANED" = 1 ] && return          # trap EXIT после trap TERM — не дублировать
+    CLEANED=1
+    # Конвейер работает в фоне, а скрипт ждёт его через wait: иначе bash
+    # откладывает trap до конца конвейера, а он бесконечный, и сигнал теряется.
+    # Именно TERM: bash в фоновом задании без управления заданиями ставит SIGINT
+    # в игнор, так что Ctrl-C до детей не доходит вовсе. TERM оба питона ловят и
+    # выходят по-человечески — рендер успевает напечатать сводку, опросчик
+    # закрывает порт. Опросчик убиваем отдельно: иначе он осиротеет и останется
+    # держать порт, а служба тем временем откроет его вторым читателем. wait жнёт
+    # обоих — без него они висят зомби и порт освобождается не сразу.
+    kill -TERM "${PIPE:-0}" 2>/dev/null
+    pkill -TERM -f "$PYPOLLER" 2>/dev/null
+    wait 2>/dev/null
     rm -f "$PYHELPER" "$PYPOLLER"
     if [ "$WAS_ACTIVE" = 1 ]; then
         echo
@@ -87,6 +101,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import sys
 import time
 
@@ -116,6 +131,7 @@ class Session(object):
         self.rows = 0
         self.printed = 0
         self.shown_since_cycle = 0
+        self.dead = False
 
     def paint(self, text, name):
         if not self.color or not name:
@@ -123,8 +139,13 @@ class Session(object):
         return C[name] + text + C["reset"]
 
     def emit(self, plain, colored=None):
-        sys.stdout.write((colored if (colored and self.color) else plain) + "\n")
-        sys.stdout.flush()
+        if not self.dead:
+            try:
+                sys.stdout.write((colored if (colored and self.color) else plain) + "\n")
+                sys.stdout.flush()
+            except (IOError, ValueError):
+                # ssh закрылся / труба оборвалась — дальше пишем только в лог
+                self.dead = True
         if self.log:
             self.log.write(plain + "\n")
             self.log.flush()
@@ -312,13 +333,24 @@ def main():
     args = ap.parse_args()
 
     ses = Session(args)
+
+    def bye(_sig, _frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, bye)
     ses.banner(args.source)
     try:
         for line in sys.stdin:
             ses.feed(line)
     except (KeyboardInterrupt, SystemExit):
         pass
+    except IOError:
+        ses.dead = True
     ses.summary()
+    try:
+        sys.stdout.flush()
+    except (IOError, ValueError):
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
 
 
 if __name__ == "__main__":
@@ -335,6 +367,7 @@ cat > "$PYPOLLER" <<'PYEOF'
 """
 import argparse
 import re
+import signal
 import sys
 import time
 
@@ -353,6 +386,13 @@ ap.add_argument("--idle", type=float, default=6.0)
 args = ap.parse_args()
 
 ser = serial.Serial(args.port, args.baud, bytesize=8, parity="N", stopbits=1, timeout=0.5)
+
+
+def bye(_sig, _frame):
+    raise KeyboardInterrupt
+
+
+signal.signal(signal.SIGTERM, bye)
 
 
 def ask(cmd):
@@ -431,6 +471,12 @@ RENDER=(python3 -u "$PYHELPER" --sensors "$SENSORS")
 [ -n "$LIMIT" ]   && RENDER+=(--limit "$LIMIT")
 export ADL200A_PREFIX="$PREFIX"
 
+if [ ! -t 1 ] && [ -z "$LIMIT" ]; then
+    echo "подсказка: вывод не в терминал. Через ssh запускай 'ssh -t ...', иначе Ctrl-C" >&2
+    echo "           оборвёт только ssh: сессия завершится сама, но сводки ты не увидишь" >&2
+    echo "           (её можно сохранить ключом -l ФАЙЛ) — либо ограничь сессию ключом -n N." >&2
+fi
+
 if [ "$MODE" = direct ]; then
     SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
     if systemctl is-active --quiet adl200a 2>/dev/null; then
@@ -440,9 +486,13 @@ if [ "$MODE" = direct ]; then
     fi
     RENDER+=(--source "прямой опрос $PORT @${ADL200A_BAUD:-38400} id=$ID")
     python3 -u "$PYPOLLER" --port "$PORT" --baud "${ADL200A_BAUD:-38400}" \
-        --id "$ID" --gap "$GAP" | "${RENDER[@]}"
+        --id "$ID" --gap "$GAP" | "${RENDER[@]}" &
+    PIPE=$!
+    wait "$PIPE" 2>/dev/null
 else
     command -v mosquitto_sub >/dev/null || { echo "нет mosquitto_sub (apt install mosquitto-clients)" >&2; exit 1; }
     RENDER+=(--source "MQTT $MQTT_HOST:$MQTT_PORT, топик $TOPIC/ch/+")
-    $STDBUF mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC/ch/+" | "${RENDER[@]}"
+    $STDBUF mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC/ch/+" | "${RENDER[@]}" &
+    PIPE=$!
+    wait "$PIPE" 2>/dev/null
 fi
