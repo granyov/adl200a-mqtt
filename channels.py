@@ -44,7 +44,32 @@ def systemctl(*args):
         return subprocess.call(cmd, stdout=null, stderr=null) == 0
 
 
-def talk(ser, cmd, wait=3.0, idle=0.8):
+def drain(ser, quiet=4.0, cap=60.0):
+    """Дождаться, пока прибор замолчит.
+
+    С шестнадцатью включёнными каналами развёртка идёт ~26 с, и прибор ещё
+    долго досылает её хвост. Писать конфигурацию поверх этого нельзя: ответы
+    уезжают не к тем командам.
+    """
+    buf = bytearray()
+    t0 = last = time.time()
+    while time.time() - t0 < cap:
+        d = ser.read(256)
+        if d:
+            buf += d
+            last = time.time()
+        elif time.time() - last > quiet:
+            return len(buf), True
+    return len(buf), False
+
+
+def talk(ser, cmd, wait=6.0, idle=1.5, expect=None):
+    """Послать команду и вернуть только относящиеся к ней строки.
+
+    Прибор отвечает с задержкой и вперемешку с кадрами MES, поэтому ответом
+    считаем строки с ожидаемым маркером, остальное отбрасываем.
+    """
+    mark = expect or cmd.split(":")[0]
     ser.reset_input_buffer()
     ser.write((">>?1,%d,%s;\r" % (ARGS.id, cmd)).encode())
     ser.flush()
@@ -57,17 +82,29 @@ def talk(ser, cmd, wait=3.0, idle=0.8):
             last = time.time()
         elif buf and time.time() - last > idle:
             break
-    return [l.strip().decode("latin1") for l in bytes(buf).split(b"\r") if l.strip()]
+    lines = [l.strip().decode("latin1") for l in bytes(buf).split(b"\r") if l.strip()]
+    return [l for l in lines if mark in l]
 
 
-def read_config(ser):
-    """{канал: (использовать, тип, температура, пар5, пар6)}"""
-    lines = talk(ser, "GCC", wait=15.0, idle=1.2)
-    cfg = {}
-    for line in lines:
-        m = GCC.search(line)
-        if m:
-            cfg[int(m.group(1))] = tuple(int(x) for x in m.groups()[1:])
+def read_config(ser, tries=3):
+    """{канал: (использовать, тип, температура, пар5, пар6)}, строки GCC.
+
+    Конфигурацию принимаем только целиком (все 16 каналов): неполный ответ
+    означает, что прибор не успел договорить, а не что каналов меньше.
+    """
+    for attempt in range(tries):
+        drain(ser, quiet=3.0, cap=45.0)
+        lines = talk(ser, "GCC", wait=30.0, idle=2.0)
+        cfg = {}
+        for line in lines:
+            m = GCC.search(line)
+            if m:
+                cfg[int(m.group(1))] = tuple(int(x) for x in m.groups()[1:])
+        if len(cfg) == 16:
+            return cfg, lines
+        if attempt + 1 < tries:
+            print("GCC пришёл неполным (%d из 16), прибор занят — повтор %d/%d..."
+                  % (len(cfg), attempt + 2, tries))
     return cfg, lines
 
 
@@ -104,7 +141,7 @@ def write_channel(ser, ch, fields, commit):
     if not commit:
         print("  (сухой прогон) >>?1,%d,%s;" % (ARGS.id, cmd))
         return None
-    reply = talk(ser, cmd)
+    reply = talk(ser, cmd, wait=8.0, expect="CK")          # ACK или NAK
     print("  >>?1,%d,%s;   ответ: %s" % (ARGS.id, cmd, "; ".join(reply) or "(молчит)"))
     return reply
 
@@ -119,6 +156,7 @@ def main():
     ap.add_argument("--enable-all", action="store_true", help="включить все 16 каналов")
     ap.add_argument("--enable", help="включить перечисленные каналы, например 1,3,5")
     ap.add_argument("--disable", help="выключить перечисленные каналы")
+    ap.add_argument("--only", help="оставить включёнными только эти каналы, остальные выключить")
     ap.add_argument("--template", default="1,1,1,20,6",
                     help="поля включённого канала: использовать,тип,температура,пар5,пар6")
     ap.add_argument("--backup", default=DEFAULT_BACKUP, help="куда сохранить копию GCC")
@@ -163,8 +201,11 @@ def main():
 
     try:
         cfg, lines = read_config(ser)
-        if not cfg:
-            raise SystemExit("прибор не ответил на GCC — порт занят службой?")
+        if len(cfg) != 16:
+            raise SystemExit(
+                "не удалось прочитать конфигурацию целиком (%d каналов из 16).\n"
+                "Прибор занят развёрткой — чем больше включено каналов, тем дольше\n"
+                "он отвечает на служебные команды. Повтори через минуту." % len(cfg))
         print("=== сейчас в приборе ===")
         show(cfg)
 
@@ -177,7 +218,11 @@ def main():
             if len(tmpl) != 5:
                 raise SystemExit("--template ожидает 5 чисел")
             chans = set()
-            if ARGS.enable_all:
+            if ARGS.only:
+                keep = set(int(x) for x in ARGS.only.split(","))
+                for ch in range(1, 17):
+                    targets[ch] = tmpl if ch in keep else (0, 0, 0, 0, 0)
+            elif ARGS.enable_all:
                 chans = set(range(1, 17))
             elif ARGS.enable:
                 chans = set(int(x) for x in ARGS.enable.split(","))
@@ -187,7 +232,8 @@ def main():
                 targets[ch] = (0, 0, 0, 0, 0)
 
         if not targets:
-            raise SystemExit("нечего менять: укажи --enable-all, --enable, --disable или --restore")
+            raise SystemExit("нечего менять: укажи --only, --enable-all, --enable, "
+                             "--disable или --restore")
 
         todo = dict((ch, f) for ch, f in targets.items() if cfg.get(ch) != f)
         if not todo:
@@ -202,6 +248,8 @@ def main():
         print("\n=== запись (%d каналов) ===" % len(todo))
         for ch in sorted(todo):
             write_channel(ser, ch, todo[ch], ARGS.yes)
+            if ARGS.yes:
+                time.sleep(0.5)          # не частить: прибор отвечает не мгновенно
 
         if not ARGS.yes:
             print("\nсухой прогон — в прибор ничего не послано. Добавь --yes, чтобы записать.")
@@ -212,6 +260,11 @@ def main():
 
         print("\n=== стало ===")
         again, _ = read_config(ser)
+        if len(again) != 16:
+            print("проверить не удалось: прибор вернул %d каналов из 16 — он занят\n"
+                  "развёрткой. Это НЕ значит, что запись не прошла; посмотри позже:\n"
+                  "  python3 %s --show" % (len(again), sys.argv[0]))
+            return
         show(again)
         bad = [ch for ch, f in todo.items() if again.get(ch) != f]
         if bad:

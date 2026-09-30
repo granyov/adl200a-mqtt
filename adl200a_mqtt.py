@@ -105,20 +105,38 @@ def enabled_channels(ser: serial.Serial) -> set:
     the sweep and the leftover frames surface in the next cycle. Knowing how many
     channels to expect lets measure() stop exactly when the sweep is complete.
     """
+    # Сначала дать прибору договорить: он долго досылает хвост развёртки, и
+    # ответ на GCC приедет вперемешку с кадрами MES.
+    t0 = last = time.time()
+    while time.time() - t0 < 45:
+        if ser.read(1024):
+            last = time.time()
+        elif time.time() - last > 3.0:
+            break
+
     ser.reset_input_buffer()
     ser.write((">>?1,%d,GCC;\r" % LOGGER_ID).encode())
     ser.flush()
     buf = bytearray()
     t0 = time.time()
     last = t0
-    while time.time() - t0 < 10:
+    while time.time() - t0 < 30:
         d = ser.read(1024)
         if d:
             buf += d
             last = time.time()
-        elif buf and time.time() - last > 1.0:
+            if len(GCC_RE.findall(bytes(buf))) >= 16:
+                break
+        elif buf and time.time() - last > 2.0:
             break
-    return set(int(m.group(1)) for m in GCC_RE.finditer(bytes(buf)) if int(m.group(2)))
+    seen = GCC_RE.findall(bytes(buf))
+    if len(seen) < 16:
+        # Неполный ответ — это "прибор не договорил", а не "каналов меньше".
+        # Лучше ничего не знать, чем знать неправду: measure() тогда уйдёт на
+        # запасной порог тишины.
+        log.warning("GCC пришёл неполным (%d из 16) — прибор занят", len(seen))
+        return set()
+    return set(int(ch) for ch, en in seen if int(en))
 
 
 def measure(ser: serial.Serial, expected: set) -> bytes:
@@ -201,11 +219,20 @@ def main() -> None:
     expected = enabled_channels(ser)
     log.info("Logger sweeps %s", ("channels " + ", ".join(
         "%02d" % c for c in sorted(expected))) if expected else "an unknown set of channels")
+    since_probe = 0
     while True:
         start = time.monotonic()
         try:
             if not expected:
-                expected = enabled_channels(ser)
+                # Не долбить GCC каждый цикл: на занятом приборе это лишние
+                # полминуты впустую. Пробуем раз в десять циклов.
+                since_probe += 1
+                if since_probe >= 10:
+                    since_probe = 0
+                    expected = enabled_channels(ser)
+                    if expected:
+                        log.info("Logger sweeps channels %s", ", ".join(
+                            "%02d" % c for c in sorted(expected)))
             raw = measure(ser, expected)
             chans = parse(raw)
             if chans:

@@ -1,8 +1,8 @@
 {
   "_about": "Sensor calibration for the ADL-200A. Keys are logger channels (GCC shows which are enabled). Values are typed in from the manufacturer's calibration sheet. Copy to /etc/adl200a/sensors.json.",
-  "_raw_unit": "How to read the TYPE 01 integer: hz, hz_x100, digits, digits_x10, or auto (resolved from hz_min/hz_max on the first real reading and then latched).",
+  "_raw_unit": "Как читать целое TYPE 01: hz, hz_x100, digits, digits_x10 или auto (подбирается по hz_min/hz_max на первом реальном отсчёте и запоминается). На этом приборе подтверждено hz_x100.",
   "channels": {
-    "02": {
+    "01": {
       "name": "VW earth pressure cell",
       "model": "1910",
       "serial": "587968",
@@ -11,12 +11,12 @@
       "cal_date": "2025-11-25",
       "cal_temp_c": 24.0,
       "initial_temp_c": null,
-      "raw_unit": "auto",
+      "raw_unit": "hz_x100",
       "hz_min": 2280.4,
       "hz_max": 2991.4,
       "polynomial": {
-        "A": -0.00000088515,
-        "B": -0.000254190,
+        "A": -8.8515e-07,
+        "B": -0.00025419,
         "C": 8.68208
       },
       "linear": {
