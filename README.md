@@ -153,8 +153,10 @@ python3 /opt/adl200a/channels.py --restore /var/lib/adl200a/gcc-backup.txt --yes
 
 - `adl200a/ch/NN` — по каналу (JSON);
 - `adl200a/measurement` — весь цикл одним JSON;
-- `adl200a/ch/NN/pressure`, `/temperature`, `/frequency`, `/digits` — те же величины
-  голым числом, если для канала есть калибровка (удобно для Telegraf и дашбордов).
+В MQTT идут **только сырые отсчёты прибора** — калибровка к ним не применяется,
+чтобы ряд в базе не зависел от файла с коэффициентами, который потом могут
+поправить. Пересчёт в инженерные единицы — для проверки глазами в консоли,
+см. `live.sh` и `calibration.py` ниже.
 
 У каждого канала два сырых значения: `t01` — струнный датчик и `t06` —
 сопротивление термистора в омах (3 кОм ≈ 25 °C). Оборванный канал видно сразу:
@@ -163,7 +165,9 @@ python3 /opt/adl200a/channels.py --restore /var/lib/adl200a/gcc-backup.txt --yes
 ## Калибровка — `/etc/adl200a/sensors.json`
 
 Сертификат от ACE Instrument даёт всё, что нужно для перевода сырых отсчётов в
-инженерные единицы. Переносим его в JSON, по одной записи на канал
+инженерные единицы. Этим пользуются **консольные инструменты** (`live.sh` и
+`calibration.py`); сама служба калибровку не читает и в MQTT её не подмешивает.
+Переносим сертификат в JSON, по одной записи на канал
 (шаблон — [`sensors.example.json`](sensors.example.json)):
 
 ```json
@@ -241,7 +245,6 @@ ssh -t astra '/opt/adl200a/live.sh -d -z -c 02'
 ```sh
 mosquitto_sub -h 127.0.0.1 -t 'adl200a/#' -v          # всё
 mosquitto_sub -h 127.0.0.1 -t 'adl200a/ch/02' -v      # один канал
-mosquitto_sub -h 127.0.0.1 -t 'adl200a/ch/02/pressure'  # только давление, числом
 mosquitto_sub -h 127.0.0.1 -t 'adl200a/measurement' -v  # весь цикл
 ```
 
@@ -265,19 +268,20 @@ python3 examples/subscribe.py 100.71.138.46   # с другого хоста (с
 ### Формат сообщения (топик `adl200a/ch/NN`)
 
 ```json
-{"channel": 2, "values": {"t01": 82233, "t06": 2987},
- "dev_date": "26/09/30", "dev_time": "16:09:42",
- "timestamp": "2026-09-30T13:09:42+00:00",
- "eng": {"sensor": "VW earth pressure cell", "status": "ok",
-         "model": "1910", "serial": "587968",
-         "temperature_c": 25.09, "thermistor_ohms": 2987,
-         "raw_unit": "digits_x10", "frequency_hz": 2867.63, "digits": 8223.3,
-         "pressure": 0.6747, "pressure_unit": "kgf/cm2", "pressure_kpa": 66.167,
-         "pressure_linear": 0.6751, "percent_fsr": 19.28}}
+{"channel": 1, "values": {"t01": 294720, "t06": 3344},
+ "dev_date": "26/09/30", "dev_time": "17:30:51",
+ "timestamp": "2026-09-30T14:30:33+00:00"}
 ```
 
-`values` — всегда сырые отсчёты. Блок `eng` появляется, когда для канала есть
-запись в `sensors.json`; поле `status` говорит, можно ли верить числам:
+`t01` — струнный отсчёт, `t06` — сопротивление термистора в омах. Ничего больше
+служба не добавляет. Посмотреть, во что это превращается, можно в консоли:
+
+```sh
+/opt/adl200a/live.sh                                   # живая таблица
+python3 /opt/adl200a/calibration.py --channel 1 --raw 294720 --therm 3344
+```
+
+Поле `status` в выводе этих инструментов говорит, можно ли верить числам:
 
 | `status` | Что значит |
 |----------|-----------|

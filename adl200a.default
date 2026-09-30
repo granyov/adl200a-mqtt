@@ -15,5 +15,6 @@ ADL200A_MQTT_PORT=1883
 ADL200A_TOPIC=adl200a
 
 # Sensor calibration, one entry per logger channel (see sensors.example.json).
-# Without this file the service publishes raw counts only.
+# Used by the console tools only (live.sh, calibration.py). The service itself
+# publishes the logger's raw counts and never reads this file.
 ADL200A_SENSORS=/etc/adl200a/sensors.json
