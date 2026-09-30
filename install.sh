@@ -19,7 +19,7 @@ fi
 
 echo "[*] files -> $PREFIX"
 install -d -m 755 "$PREFIX"
-install -m 755 adl200a_mqtt.py ace.py sniffer.py prestart.sh calibration.py "$PREFIX"/
+install -m 755 adl200a_mqtt.py ace.py sniffer.py prestart.sh calibration.py live.sh "$PREFIX"/
 
 echo "[*] config -> /etc/default/adl200a (kept if it already exists)"
 [ -f /etc/default/adl200a ] || install -m 644 adl200a.default /etc/default/adl200a
@@ -39,5 +39,6 @@ echo "Installed. Next:"
 echo "  1) set the serial port:   editor /etc/default/adl200a   (ADL200A_PORT=...)"
 echo "  2) start the service:     systemctl enable --now adl200a"
 echo "  3) calibration:           editor /etc/adl200a/sensors.json   (one entry per channel)"
-echo "  4) watch the data:        mosquitto_sub -h 127.0.0.1 -t 'adl200a/#' -v"
-echo "  5) manual command:        systemctl stop adl200a && python3 $PREFIX/ace.py MEA"
+echo "  4) live console session:  $PREFIX/live.sh          (or live.sh -d for direct polling)"
+echo "  5) watch the data:        mosquitto_sub -h 127.0.0.1 -t 'adl200a/#' -v"
+echo "  6) manual command:        systemctl stop adl200a && python3 $PREFIX/ace.py MEA"
