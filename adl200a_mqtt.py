@@ -41,9 +41,10 @@ MQTT_HOST = os.environ.get("ADL200A_MQTT_HOST", "127.0.0.1")
 MQTT_PORT = int(os.environ.get("ADL200A_MQTT_PORT", "1883"))
 TOPIC = os.environ.get("ADL200A_TOPIC", "adl200a")
 
-MEA_MAX_SECONDS = 45        # hard cap on one MEA read
 MEA_IDLE_DONE = 6.0         # s of silence after data => give up on the rest
 READ_TIMEOUT = 0.5
+MIN_GAP = 5.0               # never start a sweep right on top of the previous one
+SECONDS_PER_CHANNEL = 6.0   # generous: the logger answers ~1 channel per 3 s
 
 MES_RE = re.compile(rb"<<!(\d+),(\d+),MES:(\d+),(\d+),([0-9/]+),([0-9:]+),(\d+);")
 GCC_RE = re.compile(rb"<<!\d+,\d+,GCC:(\d+),(\d+),")
@@ -135,6 +136,30 @@ def enabled_channels(ser: serial.Serial) -> set:
     return set(int(ch) for ch, en in seen if int(en))
 
 
+def drain(ser: serial.Serial, quiet: float = 2.0, cap: float = 120.0) -> int:
+    """Wait until the logger stops talking; return how many stale bytes it sent.
+
+    Anything still arriving belongs to the previous sweep. Starting a new MEA on
+    top of it is what puts the logger behind: the requests queue up, answers come
+    out against the wrong command, and each cycle carries leftovers of the last.
+    """
+    stale = 0
+    t0 = last = time.time()
+    while time.time() - t0 < cap:
+        d = ser.read(1024)
+        if d:
+            stale += len(d)
+            last = time.time()
+        elif time.time() - last > quiet:
+            break
+    return stale
+
+
+def sweep_budget(expected: set) -> float:
+    """How long one sweep may take. Grows with the number of enabled channels."""
+    return max(45.0, 20.0 + SECONDS_PER_CHANNEL * (len(expected) or 16))
+
+
 def measure(ser: serial.Serial, expected: set) -> bytes:
     """Send MEA and collect the response until every expected channel is in."""
     cmd = (">>?1,%d,MEA;\r" % LOGGER_ID).encode()
@@ -142,9 +167,10 @@ def measure(ser: serial.Serial, expected: set) -> bytes:
     ser.write(cmd)
     ser.flush()
     buf = bytearray()
+    budget = sweep_budget(expected)
     t0 = time.time()
     last = t0
-    while time.time() - t0 < MEA_MAX_SECONDS:
+    while time.time() - t0 < budget:
         d = ser.read(1024)
         if d:
             buf += d
@@ -178,9 +204,14 @@ def main() -> None:
     log.info("Logger sweeps %s", ("channels " + ", ".join(
         "%02d" % c for c in sorted(expected))) if expected else "an unknown set of channels")
     since_probe = 0
+    warned = False
     while True:
         start = time.monotonic()
         try:
+            stale = drain(ser)
+            if stale:
+                log.warning("Dropped %d stale bytes before MEA - the previous sweep "
+                            "had not finished", stale)
             if not expected:
                 # Не долбить GCC каждый цикл: на занятом приборе это лишние
                 # полминуты впустую. Пробуем раз в десять циклов.
@@ -191,7 +222,15 @@ def main() -> None:
                     if expected:
                         log.info("Logger sweeps channels %s", ", ".join(
                             "%02d" % c for c in sorted(expected)))
+            t_sweep = time.monotonic()
             raw = measure(ser, expected)
+            sweep = time.monotonic() - t_sweep
+            if sweep > POLL_INTERVAL - MIN_GAP and not warned:
+                warned = True
+                log.warning("A sweep takes %.0f s but ADL200A_INTERVAL is %d s. "
+                            "Cycles will run at the logger's pace instead; raise the "
+                            "interval or enable fewer channels (channels.py --only ...)",
+                            sweep, POLL_INTERVAL)
             chans = parse(raw)
             if chans:
                 ts = datetime.now(timezone.utc).isoformat()
@@ -201,7 +240,8 @@ def main() -> None:
                     client.publish("%s/ch/%02d" % (TOPIC, ch), json.dumps(payload), qos=0)
                 client.publish("%s/measurement" % TOPIC, json.dumps(
                     {"timestamp": ts, "channels": [chans[c] for c in sorted(chans)]}), qos=0)
-                log.info("Published %d channels (%d raw bytes)", len(chans), len(raw))
+                log.info("Published %d channels (%d raw bytes, sweep %.0f s)",
+                         len(chans), len(raw), sweep)
             else:
                 log.warning("No MES frames parsed (%d bytes) - logger connected on %s?",
                             len(raw), PORT)
@@ -215,7 +255,9 @@ def main() -> None:
             continue
         except Exception as e:  # keep the daemon alive
             log.exception("Unexpected: %s", e)
-        time.sleep(max(0.0, POLL_INTERVAL - (time.monotonic() - start)))
+        # MIN_GAP, а не 0: даже если развёртка перебрала интервал, следующий MEA
+        # не уходит впритык — иначе прибор снова начинает отставать.
+        time.sleep(max(MIN_GAP, POLL_INTERVAL - (time.monotonic() - start)))
 
 
 if __name__ == "__main__":
