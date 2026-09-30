@@ -26,6 +26,7 @@ echo "[*] config -> /etc/default/adl200a (kept if it already exists)"
 
 echo "[*] sensor calibration -> /etc/adl200a/sensors.json (kept if it already exists)"
 install -d -m 755 /etc/adl200a
+install -d -m 775 -g dialout /var/lib/adl200a 2>/dev/null || install -d -m 777 /var/lib/adl200a
 [ -f /etc/adl200a/sensors.json ] || install -m 644 sensors.example.json /etc/adl200a/sensors.json
 
 echo "[*] service (User=$SVCUSER)"

@@ -73,6 +73,22 @@ def show(cfg):
     print("\nопрашивается: %s" % (", ".join("%02d" % c for c in on) if on else "ничего"))
 
 
+def save_backup(path, lines):
+    """Копия обязательна: без неё запись отменяем, а не идём наугад."""
+    fallback = os.path.join(os.path.expanduser("~"), "adl200a-gcc-backup.txt")
+    for cand in (path, fallback):
+        try:
+            d = os.path.dirname(cand)
+            if d and not os.path.isdir(d):
+                os.makedirs(d)
+            with open(cand, "w") as fh:
+                fh.write("\n".join(lines) + "\n")
+            return cand
+        except OSError as e:
+            print("копию в %s записать не вышло (%s)" % (cand, e))
+    raise SystemExit("резервную копию сохранить не удалось — запись отменена")
+
+
 def write_channel(ser, ch, fields, commit):
     cmd = "SCC:%d,%d,%d,%d,%d,%d" % ((ch,) + tuple(fields))
     if not commit:
@@ -143,14 +159,10 @@ def main():
             print("\nвсё уже в нужном состоянии, писать нечего")
             return
 
-        if ARGS.yes:
-            path = ARGS.backup
-            d = os.path.dirname(path)
-            if d and not os.path.isdir(d):
-                os.makedirs(d)
-            with open(path, "w") as fh:
-                fh.write("\n".join(lines) + "\n")
-            print("\nрезервная копия: %s  (вернуть: --restore %s --yes)" % (path, path))
+        saved = None
+        if ARGS.yes and not ARGS.restore:
+            saved = save_backup(ARGS.backup, lines)
+            print("\nрезервная копия: %s  (вернуть: --restore %s --yes)" % (saved, saved))
 
         print("\n=== запись (%d каналов) ===" % len(todo))
         for ch in sorted(todo):
@@ -170,7 +182,8 @@ def main():
         if bad:
             print("\nНЕ ПРИМЕНИЛОСЬ на каналах: %s" %
                   ", ".join("%02d" % c for c in sorted(bad)))
-            print("вернуть как было: python3 %s --restore %s --yes" % (sys.argv[0], ARGS.backup))
+            if saved:
+                print("вернуть как было: python3 %s --restore %s --yes" % (sys.argv[0], saved))
     finally:
         ser.close()
 
