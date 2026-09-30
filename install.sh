@@ -19,7 +19,7 @@ fi
 
 echo "[*] files -> $PREFIX"
 install -d -m 755 "$PREFIX"
-install -m 755 adl200a_mqtt.py ace.py sniffer.py prestart.sh calibration.py live.sh "$PREFIX"/
+install -m 755 adl200a_mqtt.py ace.py sniffer.py prestart.sh calibration.py live.sh channels.py "$PREFIX"/
 
 echo "[*] config -> /etc/default/adl200a (kept if it already exists)"
 [ -f /etc/default/adl200a ] || install -m 644 adl200a.default /etc/default/adl200a
