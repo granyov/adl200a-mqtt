@@ -63,10 +63,16 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# Вывод в конвейер по умолчанию буферизуется поблочно (4 КБ) — строки копились
+# бы минутами. stdbuf для mosquitto_sub и python3 -u для своих скриптов.
+STDBUF=""
+command -v stdbuf >/dev/null && STDBUF="stdbuf -oL"
+
 PYHELPER=$(mktemp "${TMPDIR:-/tmp}/adl200a-live.XXXXXX.py")
+PYPOLLER=$(mktemp "${TMPDIR:-/tmp}/adl200a-poll.XXXXXX.py")
 WAS_ACTIVE=0
 cleanup() {
-    rm -f "$PYHELPER"
+    rm -f "$PYHELPER" "$PYPOLLER"
     if [ "$WAS_ACTIVE" = 1 ]; then
         echo
         echo "возвращаю службу adl200a..." >&2
@@ -166,6 +172,10 @@ class Session(object):
             return
         if self.args.raw:
             self.emit("  " + line, self.paint("  " + line, "dim"))
+        if line.startswith("---INFO---"):
+            msg = line[len("---INFO---"):].strip()
+            self.emit(msg, self.paint(msg, "dim"))
+            return
         if line.startswith("---CYCLE---"):
             self.flush()
             if not self.shown_since_cycle:
@@ -315,6 +325,104 @@ if __name__ == "__main__":
     main()
 PYEOF
 
+cat > "$PYPOLLER" <<'PYEOF'
+"""Прямой опрос ADL-200A: GCC один раз, дальше MEA по кругу.
+
+Ответ на MEA приходит канал за каналом с паузами в несколько секунд, поэтому
+"давно нет данных" — плохой признак конца развёртки: он режет её пополам, и
+остаток всплывает в следующем цикле. Спрашиваем у прибора, какие каналы
+включены, и ждём ровно их.
+"""
+import argparse
+import re
+import sys
+import time
+
+import serial
+
+MES = re.compile(rb"<<!\d+,\d+,MES:(\d+),(\d+),[0-9/]+,[0-9:]+,\d+;")
+GCC = re.compile(rb"<<!\d+,\d+,GCC:(\d+),(\d+),")
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--port", required=True)
+ap.add_argument("--baud", type=int, default=38400)
+ap.add_argument("--id", type=int, default=1)
+ap.add_argument("--gap", type=float, default=0.0)
+ap.add_argument("--cap", type=float, default=45.0)
+ap.add_argument("--idle", type=float, default=6.0)
+args = ap.parse_args()
+
+ser = serial.Serial(args.port, args.baud, bytesize=8, parity="N", stopbits=1, timeout=0.5)
+
+
+def ask(cmd):
+    ser.reset_input_buffer()
+    ser.write((">>?1,%d,%s;\r" % (args.id, cmd)).encode())
+    ser.flush()
+
+
+def drain(buf, emitted):
+    """Выдать завершённые строки из буфера, вернуть новую позицию."""
+    while True:
+        i = buf.find(b"\r", emitted)
+        if i < 0:
+            return emitted
+        line = bytes(buf[emitted:i]).strip()
+        emitted = i + 1
+        if line:
+            sys.stdout.write(line.decode("latin1") + "\n")
+            sys.stdout.flush()
+
+
+def collect(cmd, done, cap, idle):
+    ask(cmd)
+    buf = bytearray()
+    emitted = 0
+    t0 = last = time.time()
+    while time.time() - t0 < cap:
+        d = ser.read(256)
+        if d:
+            buf += d
+            last = time.time()
+            emitted = drain(buf, emitted)
+            if done(bytes(buf)):
+                break
+        elif buf and time.time() - last > idle:
+            break
+    drain(buf, emitted)
+    return bytes(buf)
+
+
+raw = collect("GCC", lambda b: len(GCC.findall(b)) >= 16, 12.0, 1.0)
+expected = set(int(m.group(1)) for m in GCC.finditer(raw) if int(m.group(2)))
+sys.stdout.write("---INFO--- прибор опрашивает %s\n" % (
+    "каналы " + ", ".join("%02d" % c for c in sorted(expected)) if expected
+    else "неизвестно какие каналы (GCC не ответил)"))
+sys.stdout.flush()
+
+
+def swept(b):
+    if not expected:
+        return False
+    seen = {}
+    for m in MES.finditer(b):
+        seen.setdefault(int(m.group(1)), set()).add(int(m.group(2)))
+    return all(len(seen.get(c, ())) >= 2 for c in expected)
+
+
+try:
+    while True:
+        collect("MEA", swept, args.cap, args.idle)
+        sys.stdout.write("---CYCLE---\n")
+        sys.stdout.flush()
+        if args.gap:
+            time.sleep(args.gap)
+except (KeyboardInterrupt, IOError):
+    pass
+finally:
+    ser.close()
+PYEOF
+
 RENDER=(python3 -u "$PYHELPER" --sensors "$SENSORS")
 [ -n "$CHANNEL" ] && RENDER+=(--channel "$CHANNEL")
 [ -n "$ZERO" ]    && RENDER+=(--zero)
@@ -331,13 +439,10 @@ if [ "$MODE" = direct ]; then
         $SUDO systemctl stop adl200a || { echo "не смог остановить службу" >&2; exit 1; }
     fi
     RENDER+=(--source "прямой опрос $PORT @${ADL200A_BAUD:-38400} id=$ID")
-    while :; do
-        ADL200A_PORT="$PORT" python3 "$PREFIX/ace.py" MEA "$ID" 40 2>/dev/null
-        echo "---CYCLE---"
-        [ "$GAP" != 0 ] && sleep "$GAP"
-    done | "${RENDER[@]}"
+    python3 -u "$PYPOLLER" --port "$PORT" --baud "${ADL200A_BAUD:-38400}" \
+        --id "$ID" --gap "$GAP" | "${RENDER[@]}"
 else
     command -v mosquitto_sub >/dev/null || { echo "нет mosquitto_sub (apt install mosquitto-clients)" >&2; exit 1; }
     RENDER+=(--source "MQTT $MQTT_HOST:$MQTT_PORT, топик $TOPIC/ch/+")
-    mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC/ch/+" | "${RENDER[@]}"
+    $STDBUF mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC/ch/+" | "${RENDER[@]}"
 fi

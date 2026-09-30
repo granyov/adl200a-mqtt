@@ -46,10 +46,11 @@ TOPIC = os.environ.get("ADL200A_TOPIC", "adl200a")
 SENSORS_FILE = os.environ.get("ADL200A_SENSORS", "/etc/adl200a/sensors.json")
 
 MEA_MAX_SECONDS = 45        # hard cap on one MEA read
-MEA_IDLE_DONE = 3.0         # s of silence after data => cycle complete
+MEA_IDLE_DONE = 6.0         # s of silence after data => give up on the rest
 READ_TIMEOUT = 0.5
 
 MES_RE = re.compile(rb"<<!(\d+),(\d+),MES:(\d+),(\d+),([0-9/]+),([0-9:]+),(\d+);")
+GCC_RE = re.compile(rb"<<!\d+,\d+,GCC:(\d+),(\d+),")
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)-7s %(message)s",
@@ -96,8 +97,32 @@ def open_serial() -> serial.Serial:
             time.sleep(5)
 
 
-def measure(ser: serial.Serial) -> bytes:
-    """Send MEA and collect the full multi-frame response."""
+def enabled_channels(ser: serial.Serial) -> set:
+    """Ask GCC which channels the logger actually sweeps.
+
+    A MEA answer arrives channel by channel with seconds of silence in between,
+    so "no data for a while" is not a reliable end-of-sweep marker: it truncates
+    the sweep and the leftover frames surface in the next cycle. Knowing how many
+    channels to expect lets measure() stop exactly when the sweep is complete.
+    """
+    ser.reset_input_buffer()
+    ser.write((">>?1,%d,GCC;\r" % LOGGER_ID).encode())
+    ser.flush()
+    buf = bytearray()
+    t0 = time.time()
+    last = t0
+    while time.time() - t0 < 10:
+        d = ser.read(1024)
+        if d:
+            buf += d
+            last = time.time()
+        elif buf and time.time() - last > 1.0:
+            break
+    return set(int(m.group(1)) for m in GCC_RE.finditer(bytes(buf)) if int(m.group(2)))
+
+
+def measure(ser: serial.Serial, expected: set) -> bytes:
+    """Send MEA and collect the response until every expected channel is in."""
     cmd = (">>?1,%d,MEA;\r" % LOGGER_ID).encode()
     ser.reset_input_buffer()
     ser.write(cmd)
@@ -110,6 +135,10 @@ def measure(ser: serial.Serial) -> bytes:
         if d:
             buf += d
             last = time.time()
+            if expected:
+                got = parse(bytes(buf))
+                if all(len(got.get(c, {}).get("values", ())) >= 2 for c in expected):
+                    break
         elif buf and time.time() - last > MEA_IDLE_DONE:
             break
     return bytes(buf)
@@ -169,10 +198,15 @@ def main() -> None:
         log.info("No calibration in %s - publishing raw counts only", SENSORS_FILE)
     client = make_mqtt()
     ser = open_serial()
+    expected = enabled_channels(ser)
+    log.info("Logger sweeps %s", ("channels " + ", ".join(
+        "%02d" % c for c in sorted(expected))) if expected else "an unknown set of channels")
     while True:
         start = time.monotonic()
         try:
-            raw = measure(ser)
+            if not expected:
+                expected = enabled_channels(ser)
+            raw = measure(ser, expected)
             chans = parse(raw)
             if chans:
                 enrich(chans, sensors)
