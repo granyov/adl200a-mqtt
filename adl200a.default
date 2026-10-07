@@ -8,11 +8,18 @@ ADL200A_PORT=/dev/ttyUSB0
 
 ADL200A_BAUD=38400
 ADL200A_ID=1
-ADL200A_INTERVAL=60
+ADL200A_INTERVAL=100
+ADL200A_MEA_MAX_SECONDS=90
+ADL200A_MEA_IDLE_DONE=20
 
 ADL200A_MQTT_HOST=127.0.0.1
 ADL200A_MQTT_PORT=1883
 ADL200A_TOPIC=adl200a
+
+# One response waiting for MQTT PUBACK. Deleted after confirmed delivery.
+ADL200A_PENDING_FILE=/var/lib/adl200a/pending.json
+# Optional stable, unique MQTT client ID (default: adl200a-<hostname>-<logger-id>).
+# ADL200A_MQTT_CLIENT_ID=adl200a-uvon-1
 
 # Sensor calibration, one entry per logger channel (see sensors.example.json).
 # Without this file the service publishes raw counts only.

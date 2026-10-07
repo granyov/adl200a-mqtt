@@ -16,6 +16,7 @@ DANGER (change state): RUN FMT RST SVE and any S** / SDD / STT.
 import os
 import sys
 import time
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor"))
 import serial
 
 PORT = os.environ.get("ADL200A_PORT", "/dev/ttyUSB0")

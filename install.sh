@@ -19,15 +19,19 @@ fi
 
 echo "[*] files -> $PREFIX"
 install -d -m 755 "$PREFIX"
-install -m 755 adl200a_mqtt.py ace.py sniffer.py prestart.sh calibration.py live.sh channels.py "$PREFIX"/
+install -m 755 adl200a_mqtt.py delivery.py ace.py sniffer.py prestart.sh calibration.py live.sh channels.py "$PREFIX"/
 
 echo "[*] config -> /etc/default/adl200a (kept if it already exists)"
 [ -f /etc/default/adl200a ] || install -m 644 adl200a.default /etc/default/adl200a
 
 echo "[*] sensor calibration -> /etc/adl200a/sensors.json (kept if it already exists)"
 install -d -m 755 /etc/adl200a
-install -d -m 775 -g dialout /var/lib/adl200a 2>/dev/null || install -d -m 777 /var/lib/adl200a
-[ -f /etc/adl200a/sensors.json ] || install -m 644 sensors.example.json /etc/adl200a/sensors.json
+getent group dialout >/dev/null || groupadd dialout
+install -d -m 770 -g dialout /var/lib/adl200a
+if [ ! -f /etc/adl200a/sensors.json ]; then
+    printf '{"channels": {}}\n' > /etc/adl200a/sensors.json
+    chmod 644 /etc/adl200a/sensors.json
+fi
 
 echo "[*] service (User=$SVCUSER)"
 sed "s/__USER__/$SVCUSER/" adl200a.service > /etc/systemd/system/adl200a.service

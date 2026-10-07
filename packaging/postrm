@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+if [ -d /run/systemd/system ]; then
+    case "$1" in
+        remove|purge)
+            systemctl daemon-reload
+            systemctl restart systemd-journald
+            ;;
+    esac
+fi
+# Keep pending data and migration backups even on purge.
