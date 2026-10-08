@@ -14,7 +14,7 @@ on hardware):
 
 Env vars (defaults in parentheses):
   ADL200A_PORT (/dev/ttyUSB0)  ADL200A_BAUD (38400)  ADL200A_ID (1)
-  ADL200A_INTERVAL (60)        ADL200A_MQTT_HOST (127.0.0.1)
+  ADL200A_INTERVAL (100)       ADL200A_MQTT_HOST (127.0.0.1)
   ADL200A_MQTT_PORT (1883)     ADL200A_TOPIC (adl200a)
   ADL200A_SENSORS (/etc/adl200a/sensors.json)
 
@@ -26,31 +26,38 @@ import json
 import logging
 import os
 import re
+import socket
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor"))
 import serial
 import paho.mqtt.client as mqtt
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import calibration
+from delivery import Outbox, wait_connected
 
 PORT = os.environ.get("ADL200A_PORT", "/dev/ttyUSB0")
 BAUD = int(os.environ.get("ADL200A_BAUD", "38400"))
 LOGGER_ID = int(os.environ.get("ADL200A_ID", "1"))
-POLL_INTERVAL = int(os.environ.get("ADL200A_INTERVAL", "60"))
+POLL_INTERVAL = int(os.environ.get("ADL200A_INTERVAL", "100"))
 MQTT_HOST = os.environ.get("ADL200A_MQTT_HOST", "127.0.0.1")
 MQTT_PORT = int(os.environ.get("ADL200A_MQTT_PORT", "1883"))
 TOPIC = os.environ.get("ADL200A_TOPIC", "adl200a")
 SENSORS_FILE = os.environ.get("ADL200A_SENSORS", "/etc/adl200a/sensors.json")
+PENDING_FILE = os.environ.get("ADL200A_PENDING_FILE", "/var/lib/adl200a/pending.json")
+CLIENT_ID = os.environ.get("ADL200A_MQTT_CLIENT_ID",
+                           "adl200a-%s-%d" % (socket.gethostname(), LOGGER_ID))
 
-MEA_MAX_SECONDS = 45        # hard cap on one MEA read
-MEA_IDLE_DONE = 6.0         # s of silence after data => give up on the rest
+MEA_MAX_SECONDS = int(os.environ.get("ADL200A_MEA_MAX_SECONDS", "90"))
+MEA_IDLE_DONE = float(os.environ.get("ADL200A_MEA_IDLE_DONE", "20"))
 READ_TIMEOUT = 0.5
 
 MES_RE = re.compile(rb"<<!(\d+),(\d+),MES:(\d+),(\d+),([0-9/]+),([0-9:]+),(\d+);")
-GCC_RE = re.compile(rb"<<!\d+,\d+,GCC:(\d+),(\d+),")
+GCC_RE = re.compile(rb"<<!\d+,(\d+),GCC:(\d+),([01]),\d+,\d+,\d+,\d+;")
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)-7s %(message)s",
@@ -60,7 +67,7 @@ log = logging.getLogger("adl200a")
 
 def make_mqtt() -> mqtt.Client:
     try:  # paho-mqtt >= 2.0
-        c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="adl200a")
+        c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=CLIENT_ID)
 
         def on_connect(cl, u, flags, reason_code, props):
             log.info("MQTT connected: %s", reason_code)
@@ -68,7 +75,7 @@ def make_mqtt() -> mqtt.Client:
         def on_disconnect(cl, u, flags, reason_code, props):
             log.warning("MQTT disconnected: %s", reason_code)
     except AttributeError:  # paho-mqtt < 2.0
-        c = mqtt.Client(client_id="adl200a")
+        c = mqtt.Client(client_id=CLIENT_ID)
 
         def on_connect(cl, u, flags, rc):
             log.info("MQTT connected rc=%s", rc)
@@ -78,6 +85,8 @@ def make_mqtt() -> mqtt.Client:
 
     c.on_connect = on_connect
     c.on_disconnect = on_disconnect
+    c.max_inflight_messages_set(1)
+    c.max_queued_messages_set(20)
     c.reconnect_delay_set(min_delay=1, max_delay=30)
     c.connect_async(MQTT_HOST, MQTT_PORT, 60)
     c.loop_start()
@@ -89,7 +98,7 @@ def open_serial() -> serial.Serial:
         try:
             s = serial.Serial(PORT, BAUD, bytesize=serial.EIGHTBITS,
                               parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,
-                              timeout=READ_TIMEOUT)
+                              timeout=READ_TIMEOUT, write_timeout=5, exclusive=True)
             log.info("Serial open %s @ %d 8N1", PORT, BAUD)
             return s
         except serial.SerialException as e:
@@ -97,7 +106,7 @@ def open_serial() -> serial.Serial:
             time.sleep(5)
 
 
-def enabled_channels(ser: serial.Serial) -> set:
+def enabled_channels(ser: serial.Serial):
     """Ask GCC which channels the logger actually sweeps.
 
     A MEA answer arrives channel by channel with seconds of silence in between,
@@ -107,68 +116,77 @@ def enabled_channels(ser: serial.Serial) -> set:
     """
     # Сначала дать прибору договорить: он долго досылает хвост развёртки, и
     # ответ на GCC приедет вперемешку с кадрами MES.
-    t0 = last = time.time()
-    while time.time() - t0 < 45:
+    t0 = last = time.monotonic()
+    while time.monotonic() - t0 < 45:
         if ser.read(1024):
-            last = time.time()
-        elif time.time() - last > 3.0:
+            last = time.monotonic()
+        elif time.monotonic() - last > 3.0:
             break
 
     ser.reset_input_buffer()
     ser.write((">>?1,%d,GCC;\r" % LOGGER_ID).encode())
     ser.flush()
     buf = bytearray()
-    t0 = time.time()
-    last = t0
-    while time.time() - t0 < 30:
+    t0 = time.monotonic()
+    cfg = {}
+    while time.monotonic() - t0 < 30:
         d = ser.read(1024)
         if d:
             buf += d
-            last = time.time()
-            if len(GCC_RE.findall(bytes(buf))) >= 16:
+            cfg = {int(ch): int(en) for addr, ch, en in GCC_RE.findall(bytes(buf))
+                   if int(addr) == LOGGER_ID and 1 <= int(ch) <= 16}
+            if len(cfg) == 16:
                 break
-        elif buf and time.time() - last > 2.0:
-            break
-    seen = GCC_RE.findall(bytes(buf))
-    if len(seen) < 16:
+    if len(cfg) < 16:
         # Неполный ответ — это "прибор не договорил", а не "каналов меньше".
         # Лучше ничего не знать, чем знать неправду: measure() тогда уйдёт на
         # запасной порог тишины.
-        log.warning("GCC пришёл неполным (%d из 16) — прибор занят", len(seen))
-        return set()
-    return set(int(ch) for ch, en in seen if int(en))
+        log.warning("GCC пришёл неполным (%d из 16) — прибор занят", len(cfg))
+        return None
+    return {ch for ch, enabled in cfg.items() if enabled}
 
 
-def measure(ser: serial.Serial, expected: set) -> bytes:
+def measure(ser: serial.Serial, expected):
     """Send MEA and collect the response until every expected channel is in."""
     cmd = (">>?1,%d,MEA;\r" % LOGGER_ID).encode()
     ser.reset_input_buffer()
     ser.write(cmd)
     ser.flush()
     buf = bytearray()
-    t0 = time.time()
+    t0 = time.monotonic()
     last = t0
-    while time.time() - t0 < MEA_MAX_SECONDS:
+    reason = "timeout"
+    while time.monotonic() - t0 < MEA_MAX_SECONDS:
         d = ser.read(1024)
         if d:
             buf += d
-            last = time.time()
-            if expected:
+            last = time.monotonic()
+            if expected is not None:
                 got = parse(bytes(buf))
-                if all(len(got.get(c, {}).get("values", ())) >= 2 for c in expected):
+                if (all({"t01", "t06"}.issubset(got.get(c, {}).get("values", {}))
+                        for c in expected)
+                        and len({(got[c]["dev_date"], got[c]["dev_time"])
+                                 for c in expected}) == 1):
+                    reason = "complete"
                     break
-        elif buf and time.time() - last > MEA_IDLE_DONE:
+        elif expected is None and buf and time.monotonic() - last > MEA_IDLE_DONE:
+            reason = "idle_unknown_channels"
             break
-    return bytes(buf)
+    return bytes(buf), reason
 
 
 def parse(buf: bytes) -> dict:
     chans = {}
     for m in MES_RE.finditer(buf):
-        _lid, _addr, ch, typ, date, tm, val = m.groups()
+        _lid, addr, ch, typ, date, tm, val = m.groups()
         ch = int(ch)
-        c = chans.setdefault(ch, {"channel": ch, "values": {},
-                                  "dev_date": date.decode(), "dev_time": tm.decode()})
+        if int(addr) != LOGGER_ID or not 1 <= ch <= 16 or int(typ) not in (1, 6):
+            continue
+        stamp = (date.decode(), tm.decode())
+        c = chans.get(ch)
+        if c is None or (c["dev_date"], c["dev_time"]) != stamp:
+            c = {"channel": ch, "values": {}, "dev_date": stamp[0], "dev_time": stamp[1]}
+            chans[ch] = c
         c["values"]["t%02d" % int(typ)] = int(val)
     return chans
 
@@ -195,14 +213,15 @@ def enrich(chans: dict, sensors: dict) -> None:
                   " - " + eng["note"] if eng.get("note") else "")
 
 
-def publish_channel(client, ch: int, payload: dict) -> None:
+def channel_messages(ch: int, payload: dict):
     base = "%s/ch/%02d" % (TOPIC, ch)
-    client.publish(base, json.dumps(payload), qos=0)
+    messages = [[base, json.dumps(payload)]]
     eng = payload.get("eng") or {}
     for key, leaf in (("pressure", "pressure"), ("temperature_c", "temperature"),
                       ("frequency_hz", "frequency"), ("digits", "digits")):
         if eng.get(key) is not None:
-            client.publish("%s/%s" % (base, leaf), json.dumps(eng[key]), qos=0)
+            messages.append(["%s/%s" % (base, leaf), json.dumps(eng[key])])
+    return messages
 
 
 def main() -> None:
@@ -214,7 +233,12 @@ def main() -> None:
             "ch%02d=%s" % (c, sensors[c].name) for c in sorted(sensors)))
     else:
         log.info("No calibration in %s - publishing raw counts only", SENSORS_FILE)
+    outbox = Outbox(PENDING_FILE)
+    outbox.lock()
     client = make_mqtt()
+    # Recover an already collected response before sending another ACE command.
+    outbox.flush(client)
+    wait_connected(client)
     ser = open_serial()
     expected = enabled_channels(ser)
     log.info("Logger sweeps %s", ("channels " + ", ".join(
@@ -222,6 +246,7 @@ def main() -> None:
     since_probe = 0
     while True:
         start = time.monotonic()
+        wait_connected(client)
         try:
             if not expected:
                 # Не долбить GCC каждый цикл: на занятом приборе это лишние
@@ -233,21 +258,13 @@ def main() -> None:
                     if expected:
                         log.info("Logger sweeps channels %s", ", ".join(
                             "%02d" % c for c in sorted(expected)))
-            raw = measure(ser, expected)
+            if expected == set():
+                log.warning("Logger has no enabled channels; waiting before GCC retry")
+                time.sleep(POLL_INTERVAL)
+                continue
+            measurement_start = time.monotonic()
+            raw, reason = measure(ser, expected)
             chans = parse(raw)
-            if chans:
-                enrich(chans, sensors)
-                ts = datetime.now(timezone.utc).isoformat()
-                for ch in sorted(chans):
-                    payload = dict(chans[ch])
-                    payload["timestamp"] = ts
-                    publish_channel(client, ch, payload)
-                client.publish("%s/measurement" % TOPIC, json.dumps(
-                    {"timestamp": ts, "channels": [chans[c] for c in sorted(chans)]}), qos=0)
-                log.info("Published %d channels (%d raw bytes)", len(chans), len(raw))
-            else:
-                log.warning("No MES frames parsed (%d bytes) - logger connected on %s?",
-                            len(raw), PORT)
         except serial.SerialException as e:
             log.error("Serial error: %s (reconnecting)", e)
             try:
@@ -255,9 +272,55 @@ def main() -> None:
             except Exception:
                 pass
             ser = open_serial()
+            expected = enabled_channels(ser)
             continue
         except Exception as e:  # keep the daemon alive
             log.exception("Unexpected: %s", e)
+            time.sleep(5)
+            continue
+        if chans:
+            try:
+                enrich(chans, sensors)
+            except Exception:
+                log.exception("Calibration failed; delivering raw response")
+                for channel in chans.values():
+                    channel.pop("eng", None)
+            complete_channels = {c for c, data in chans.items()
+                                 if {"t01", "t06"}.issubset(data["values"])}
+            missing = sorted(expected - complete_channels) if expected is not None else None
+            cycle_id = uuid.uuid4().hex
+            meta = {"cycle_id": cycle_id, "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "complete": reason == "complete" if expected is not None else None,
+                    "expected_channels": sorted(expected) if expected is not None else None,
+                    "missing_channels": missing, "end_reason": reason,
+                    "consistent_device_time": len({(c["dev_date"], c["dev_time"])
+                                                   for c in chans.values()}) == 1,
+                    "duration_seconds": round(time.monotonic() - measurement_start, 2)}
+            messages = []
+            for ch in sorted(chans):
+                payload = dict(chans[ch], **meta)
+                messages.extend(channel_messages(ch, payload))
+            messages.append(["%s/measurement" % TOPIC, json.dumps(
+                dict(meta, channels=[chans[c] for c in sorted(chans)]))])
+            if meta["complete"] is not True:
+                log.warning("Cycle %s incomplete/unverified: missing=%s end=%s",
+                            cycle_id, missing, reason)
+            # Do not drop the response or collect a new one on storage failure.
+            while True:
+                try:
+                    outbox.stage(cycle_id, messages)
+                    break
+                except OSError:
+                    log.exception("Cannot save pending response; retrying before next command")
+                    if os.path.exists(PENDING_FILE):
+                        raise
+                    time.sleep(5)
+            outbox.flush(client)
+            log.info("Delivered %d channels (%d raw bytes), complete=%s cycle=%s",
+                     len(chans), len(raw), meta["complete"], cycle_id)
+        else:
+            log.warning("No MES frames parsed (%d bytes) - logger connected on %s?",
+                        len(raw), PORT)
         time.sleep(max(0.0, POLL_INTERVAL - (time.monotonic() - start)))
 
 
