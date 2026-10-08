@@ -4,7 +4,7 @@
 set -eu
 [ "$(id -u)" = 0 ] || { echo 'Run with sudo.' >&2; exit 1; }
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-deb=${1:?Usage: build-offline.sh /path/adl200a-mqtt_1.0.0_all.deb /path/new-output-directory}
+deb=${1:?Usage: build-offline.sh /path/adl200a-mqtt_1.0.1_all.deb /path/new-output-directory}
 output=${2:?Specify a new output directory}
 [ -f "$deb" ] || { echo 'Application deb not found.' >&2; exit 1; }
 [ ! -e "$output" ] || { echo 'Output directory must not exist.' >&2; exit 1; }

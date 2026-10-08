@@ -1,6 +1,23 @@
 # Офлайн-установка ADL-200A на UVON / Astra
 
-Версия 1.0.0 содержит тот же механизм доставки, который проверен на Wyse:
+Готовый полный комплект для **Astra 4.7.11 arm64** опубликован в
+[релизе 1.0.1](https://github.com/granyov/adl200a-mqtt/releases/tag/v1.0.1).
+Он включает 92 deb: приложение, Python, Mosquitto и всю цепочку зависимостей.
+Проверен на UVON установкой с отключённой сетью у установщика.
+
+```sh
+tar -xzf adl200a-mqtt-1.0.1-offline-astra-4.7.11-arm64.tar.gz
+cd adl200a-offline-astra-4.7.11-arm64
+sudo sh install-offline.sh
+sudo adl200a-configure /dev/ttyS5 38400
+```
+
+Выбирайте порт по физическому подключению. На тестовом UVON при проверке
+обоих встроенных RS-232 не получен ответ логгера; доставка реальных измерений
+на этом аппарате требует подключённого ADL-200A. Проверка с временным
+MQTT-брокером подтвердила сохранение и доставку тестового ответа после сбоя.
+
+Версия 1.0.1 содержит тот же механизм доставки, который проверен на Wyse:
 MQTT QoS 1, ожидание PUBACK, атомарный файл одного неподтверждённого цикла,
 восстановление после перезапуска и остановка нового опроса до доставки.
 Это подтверждение приёма брокером. Повторные сообщения возможны, для их
@@ -8,8 +25,9 @@ MQTT QoS 1, ожидание PUBACK, атомарный файл одного н
 
 ## Что входит в deb
 
-`adl200a-mqtt_1.0.0_all.deb` содержит программу, systemd-службу,
-pyserial **3.5** и paho-mqtt **2.1.0**, включая их лицензии. `pip` и сеть при
+`adl200a-mqtt_1.0.1_all.deb` содержит программу, systemd-службу,
+pyserial **3.5**, paho-mqtt **2.1.0** и typing_extensions **4.7.1** для Python 3.7,
+включая их лицензии. `pip` и сеть при
 установке не используются. Архитектура `all`: чистый Python, без нативных
 библиотек. Нужны системные Python **3.7+**, systemd и adduser.
 Один этот deb НЕ включает Python-интерпретатор или Mosquitto.
@@ -40,7 +58,7 @@ mosquitto_sub -h 127.0.0.1 -t 'adl200a/#' -q 1 -v
 Если Python, systemd, adduser и MQTT-брокер уже установлены:
 
 ```sh
-sudo dpkg -i adl200a-mqtt_1.0.0_all.deb
+sudo dpkg -i adl200a-mqtt_1.0.1_all.deb
 sudo adl200a-configure /dev/ttyS5 38400
 ```
 
@@ -92,7 +110,7 @@ python3 packaging/build-deb.py dist
 **той же версией Astra/Debian и той же архитектурой**, что и целевой UVON:
 
 ```sh
-sudo sh packaging/build-offline.sh "$(pwd)/dist/adl200a-mqtt_1.0.0_all.deb" "$(pwd)/dist/offline-uvon"
+sudo sh packaging/build-offline.sh "$(pwd)/dist/adl200a-mqtt_1.0.1_all.deb" "$(pwd)/dist/offline-uvon"
 tar -czf dist/offline-uvon.tar.gz -C dist offline-uvon
 ```
 

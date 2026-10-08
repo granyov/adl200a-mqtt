@@ -8,8 +8,9 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 WHEELS = {
+    "typing_extensions-4.7.1-py3-none-any.whl": "440d5dd3af93b060174bf433bccd69b0babc3b15b1a8dca43789fd7f61514b36",
     "pyserial-3.5-py2.py3-none-any.whl": "c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0",
     "paho_mqtt-2.1.0-py3-none-any.whl": "6db9ba9b34ed5bc6b6e3812718c7e06e2fd7444540df2455d2c51bd58808feee",
 }
@@ -64,7 +65,8 @@ Recommends: mosquitto, mosquitto-clients, setserial
 Installed-Size: %d
 Homepage: https://github.com/granyov/adl200a-mqtt
 Description: ACE ADL-200A RS-232 to MQTT with confirmed delivery
- Bundled pyserial 3.5 and paho-mqtt 2.1.0. One durable pending batch,
+ Bundled pyserial 3.5, paho-mqtt 2.1.0 and typing_extensions 4.7.1.
+ One durable pending batch,
  QoS 1 acknowledgements, automatic reconnect and 14-day persistent logs.
 """ % (VERSION, installed_size))
         write("DEBIAN/conffiles", "\n".join(("/etc/default/adl200a", "/etc/adl200a/sensors.json",

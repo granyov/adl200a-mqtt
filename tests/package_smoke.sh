@@ -3,7 +3,7 @@
 set -eu
 deb=${1:?Path to application deb required}
 dpkg-query -W -f='${Status}\n' adl200a-mqtt | grep -qx 'install ok installed'
-PYTHONPATH=/opt/adl200a/vendor python3 -c 'import serial, paho.mqtt.client; assert serial.VERSION == "3.5"'
+PYTHONPATH=/opt/adl200a/vendor python3 -c 'import sys, serial, paho.mqtt.client; assert serial.VERSION == "3.5"; sys.version_info >= (3, 8) or __import__("typing_extensions")'
 getent passwd adl200a
 [ "$(stat -c %U /var/lib/adl200a)" = adl200a ]
 [ "$(cat /etc/adl200a/sensors.json)" = '{"channels": {}}' ]
