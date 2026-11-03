@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+if [ -d /run/systemd/system ]; then
+    case "$1" in
+        upgrade)
+            if systemctl is-active --quiet adl200a.service; then
+                install -d /var/lib/adl200a
+                touch /var/lib/adl200a/.restart-after-upgrade
+            fi
+            systemctl stop adl200a.service
+            ;;
+        remove|deconfigure) systemctl stop adl200a.service ;;
+    esac
+fi

@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+if [ "$1" != configure ]; then exit 0; fi
+legacy=/etc/systemd/system/adl200a.service
+if [ -d /run/systemd/system ] && [ -f "$legacy" ] && grep -q '/opt/adl200a/adl200a_mqtt.py' "$legacy"; then
+    if systemctl is-active --quiet adl200a.service; then
+        install -d /var/lib/adl200a
+        touch /var/lib/adl200a/.restart-after-upgrade
+        systemctl stop adl200a.service
+    fi
+fi
+getent group dialout >/dev/null || addgroup --system dialout
+id adl200a >/dev/null 2>&1 || adduser --system --no-create-home --home /var/lib/adl200a --ingroup dialout adl200a
+install -d -m 770 -o adl200a -g dialout /var/lib/adl200a
+# The pending response must remain readable when migrating from install.sh.
+for file in /var/lib/adl200a/pending.json /var/lib/adl200a/pending.json.lock; do
+    if [ -f "$file" ]; then chown adl200a:dialout "$file"; chmod 660 "$file"; fi
+done
+if [ -f "$legacy" ] && grep -q '/opt/adl200a/adl200a_mqtt.py' "$legacy"; then
+    install -d -m 700 /var/backups/adl200a
+    mv "$legacy" "/var/backups/adl200a/legacy-service-$(date +%Y%m%d%H%M%S)"
+elif [ -f "$legacy" ]; then
+    echo 'Custom /etc/systemd/system/adl200a.service shadows the package unit; review it before starting.' >&2
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+    systemctl restart systemd-journald
+    journalctl --flush
+    systemctl enable adl200a.service
+    if [ -f /var/lib/adl200a/.restart-after-upgrade ]; then
+        systemctl restart adl200a.service
+        rm /var/lib/adl200a/.restart-after-upgrade
+    fi
+fi
+echo 'Installed. Configure/start: sudo adl200a-configure /dev/ttyS5 38400'

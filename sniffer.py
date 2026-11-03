@@ -8,6 +8,7 @@ Generic low-level probe; for the ACE ASCII protocol use ace.py instead.
 """
 import os
 import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor"))
 import serial
 
 PORT = os.environ.get("ADL200A_PORT", "/dev/ttyUSB0")

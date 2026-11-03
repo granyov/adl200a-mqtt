@@ -11,6 +11,7 @@ set -u
 
 PREFIX="${ADL200A_PREFIX:-/opt/adl200a}"
 [ -f "$PREFIX/calibration.py" ] || PREFIX="$(cd "$(dirname "$0")" && pwd)"
+export PYTHONPATH="$PREFIX/vendor${PYTHONPATH:+:$PYTHONPATH}"
 [ -f /etc/default/adl200a ] && . /etc/default/adl200a
 
 MODE=mqtt

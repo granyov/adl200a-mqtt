@@ -97,7 +97,9 @@ class WithFakeLogger(unittest.TestCase):
         self.assertEqual(len(cfg), 16)
         expected = d.expected_frames(cfg)
         self.assertEqual(sorted(expected), list(range(1, 15)))
-        chans = d.parse(d.measure(ser, expected))
+        raw, reason = d.measure(ser, expected)
+        self.assertEqual(reason, "complete")
+        chans = d.parse(raw)
         self.assertEqual(sorted(chans), list(range(1, 15)))
         # Sweep 01 does not cover the cell's 2947 Hz: no VW reading, like on site
         self.assertEqual(chans[1]["values"], {"t01": 0, "t06": 3344})
