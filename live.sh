@@ -291,12 +291,14 @@ class Session(object):
             return              # лимит выбран; сводка дочищает очередь — молча
         t01, t06 = values.get("t01"), values.get("t06")
         sensor = self.sensors.get(ch)
+        fields = self.device.get(ch)
         if sensor is not None:
-            eng = sensor.convert(t01, t06)
+            eng = sensor.convert_values(values)
         else:
             # калибровки нет, но обрыв виден и по сырым числам
             temp = calibration.resistance_to_celsius(t06 or None)
-            if not t01:
+            vw_on = fields[1] if fields else "t01" in values
+            if vw_on and not t01:
                 status = "disconnected" if temp is None else "no_vw_signal"
             else:
                 status = "raw"
@@ -305,16 +307,7 @@ class Session(object):
                 eng["temperature_c"] = round(temp, 2)
 
         pressure = eng.get("pressure")
-        delta = None
-        if pressure is not None:
-            st = self.stats.setdefault(ch, {"n": 0, "min": pressure, "max": pressure,
-                                            "sum": 0.0, "first": pressure})
-            st["n"] += 1
-            st["sum"] += pressure
-            st["min"] = min(st["min"], pressure)
-            st["max"] = max(st["max"], pressure)
-            if self.args.zero:
-                delta = pressure - self.zero.setdefault(ch, pressure)
+        delta = self.track(ch, pressure, sensor.unit if sensor else "")
 
         def num(v, fmt):
             return ("%" + fmt) % v if v is not None else "—"
@@ -334,14 +327,16 @@ class Session(object):
         status = eng.get("status", "raw")
         label = STATUS_RU.get(status, status)
         notes = [eng["note"]] if eng.get("note") else []
-        fields = self.device.get(ch)
+        analog = eng.get("analog")
+        if analog:
+            notes.append(self.analog_note(ch, analog))
         hz = eng.get("frequency_hz")
         if fields and fields[1] and hz and fields[2] in ace.SWEEP_BANDS:
             lo, hi = ace.SWEEP_BANDS[fields[2]]
             if not lo <= hz <= hi:
                 notes.append("%.0f Гц вне полосы прибора %s" % (hz, ace.band_label(fields[2])))
         for key in sorted(values):
-            if key not in SHOWN_TYPES:
+            if key not in SHOWN_TYPES and not (analog and key == analog.get("key")):
                 code = int(key[1:])
                 notes.append("%s(%s)=%s" % (ace.TYPE_LABELS.get(code, "тип %d" % code),
                                             key, values[key]))
@@ -359,6 +354,42 @@ class Session(object):
         if self.rows >= 24:
             self.header()
 
+    def track(self, key, value, unit):
+        """Копит сводку по величине; возвращает Δ от первого отсчёта при -z."""
+        if value is None:
+            return None
+        st = self.stats.setdefault(key, {"n": 0, "min": value, "max": value,
+                                         "sum": 0.0, "first": value, "unit": unit})
+        st["n"] += 1
+        st["sum"] += value
+        st["min"] = min(st["min"], value)
+        st["max"] = max(st["max"], value)
+        if self.args.zero:
+            return value - self.zero.setdefault(key, value)
+        return None
+
+    def analog_note(self, ch, a):
+        """Строка про аналоговый вход с масштабом установщика (mV, RTD, ...)."""
+        head = "%s(%s)" % (a["label"], a["key"])
+        status = a["status"]
+        if status == "no_value":
+            return head + " нет значения"
+        if status == "no_scale":
+            return "%s=%s, analog_scale не задан" % (head, a["raw"])
+        text = "%s %.10g %s" % (head, a["input"], a.get("input_unit", "")) if "input" in a \
+            else "%s=%s" % (head, a["raw"])
+        text = text.rstrip()
+        if status == "input_only":
+            return text + " (пересчёт не задан)"
+        if status == "out_of_range":
+            return text + " — вне диапазона"
+        unit = a.get("unit", "")
+        delta = self.track(("a", ch), a["value"], unit)
+        text += " → %.4f %s" % (a["value"], unit)
+        if delta is not None:
+            text += " (Δ %+.4f)" % delta
+        return text.rstrip()
+
     # ---------- сводка ----------
 
     def summary(self):
@@ -369,13 +400,13 @@ class Session(object):
             return
         self.emit("")
         self.emit(self.paint("сводка за сессию", "bold"))
-        for ch in sorted(self.stats):
-            st = self.stats[ch]
-            unit = self.sensors[ch].unit if ch in self.sensors else ""
-            self.emit("  ch%02d  отсчётов %d   мин %.4f   макс %.4f   среднее %.4f   "
+        for key in sorted(self.stats, key=lambda k: (k[1], 1) if isinstance(k, tuple) else (k, 0)):
+            st = self.stats[key]
+            name = ("ch%02d аналог" % key[1]) if isinstance(key, tuple) else "ch%02d" % key
+            self.emit("  %-11s отсчётов %d   мин %.4f   макс %.4f   среднее %.4f   "
                       "размах %.4f   дрейф от первого %+.4f %s"
-                      % (ch, st["n"], st["min"], st["max"], st["sum"] / st["n"],
-                         st["max"] - st["min"], st["sum"] / st["n"] - st["first"], unit))
+                      % (name, st["n"], st["min"], st["max"], st["sum"] / st["n"],
+                         st["max"] - st["min"], st["sum"] / st["n"] - st["first"], st["unit"]))
 
 
 def main():

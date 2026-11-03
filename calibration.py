@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """calibration.py — ADL-200A raw counts -> engineering units.
 
-Each MEA frame carries two integers per channel:
+Each MEA frame carries one integer per channel input; its TYPE is the input code:
 
   TYPE 01 — vibrating-wire reading. The scale depends on the logger's measuring
             mode, so it is resolved per sensor (see ``raw_unit`` below).
   TYPE 06 — thermistor resistance in ohms (a 3 kOhm @ 25 C bead reads ~3007).
+  TYPE 02, 03, 04, 05, 07 — mV, Bridge, Serial, Resistance, RTD. What their
+            integers mean has not been measured on a live unit, so the scale
+            is set by the installer in "analog_scale" (see AnalogScale).
 
 Sensor definitions are typed in from the manufacturer's calibration sheet and
 live in a JSON file keyed by logger channel — see sensors.example.json.
@@ -13,11 +16,15 @@ live in a JSON file keyed by logger channel — see sensors.example.json.
 Standalone use:
 
     python3 calibration.py --channel 02 --raw 82233 --therm 3007
+    python3 calibration.py --channel 05 --analog 12345   # mV, RTD, ... input
     python3 calibration.py --explain 82233        # all candidate scalings
+    python3 calibration.py --check                # validate the whole file
 """
 import json
 import math
 import os
+
+import ace_config as ace
 
 # Steinhart-Hart constants for the 3 kOhm @ 25 C bead used by ACE Instrument
 # (identical to the Geokon/Slope Indicator standard curve, -40..+105 C).
@@ -55,6 +62,117 @@ def candidate_frequencies(raw):
     return dict((name, fn(raw)) for name, fn in RAW_UNITS.items())
 
 
+# Platinum RTD, IEC 60751 (alpha = 0.00385): Callendar–Van Dusen coefficients.
+CVD_A, CVD_B, CVD_C = 3.9083e-3, -5.775e-7, -4.183e-12
+RTD_R0 = {"pt100": 100.0, "pt1000": 1000.0}
+
+
+def _rtd_ohms(t, r0):
+    r = 1.0 + CVD_A * t + CVD_B * t * t
+    if t < 0:
+        r += CVD_C * (t - 100.0) * t ** 3
+    return r0 * r
+
+
+def rtd_to_celsius(ohms, r0):
+    """Platinum RTD resistance -> temperature (-200..+850 C), or None outside it."""
+    if ohms is None or not _rtd_ohms(-200.0, r0) <= ohms <= _rtd_ohms(850.0, r0):
+        return None
+    # exact for t >= 0; below zero refine with Newton on the full equation
+    t = (-CVD_A + math.sqrt(CVD_A ** 2 - 4 * CVD_B * (1 - ohms / r0))) / (2 * CVD_B)
+    if ohms < r0:
+        for _ in range(20):
+            f = _rtd_ohms(t, r0) - ohms
+            h = 1e-4
+            d = (_rtd_ohms(t + h, r0) - _rtd_ohms(t - h, r0)) / (2 * h)
+            t -= f / d
+            if abs(f) < 1e-9:
+                break
+    return t
+
+
+class AnalogScale(object):
+    """Installer-defined scale for an analog input: mV, Bridge, Resistance, RTD, Serial.
+
+        raw integer  x raw_multiplier  ->  input value, in input_unit (mV, mV/V, Ohm ...)
+        input value  -> linear | polynomial | function  ->  value, in unit
+
+    raw_multiplier is found on site against a reference (calibrator, precision
+    resistor); the conversion comes from the sensor's own calibration sheet.
+    With no conversion given, only the input value is shown — which is exactly
+    what is needed while raw_multiplier is being found.
+    """
+
+    FUNCTIONS = tuple(sorted(RTD_R0))
+
+    def __init__(self, cfg):
+        self.raw_multiplier = float(cfg.get("raw_multiplier", 1.0))
+        self.input_unit = cfg.get("input_unit", "")
+        self.unit = cfg.get("unit", "")
+        self.quantity = cfg.get("quantity", "")
+        self.function = cfg.get("function")
+        self.polynomial = cfg.get("polynomial")
+        lin = cfg.get("linear") or {}
+        self.gage_factor = lin.get("gage_factor")
+        self.zero_reading = lin.get("zero_reading", 0.0)
+
+    @staticmethod
+    def problems(cfg):
+        """What is wrong with an analog_scale block, as a list of strings."""
+        if not isinstance(cfg, dict):
+            return ["analog_scale должен быть объектом"]
+        out = []
+        m = cfg.get("raw_multiplier", 1.0)
+        if not isinstance(m, (int, float)) or isinstance(m, bool) or m == 0:
+            out.append("raw_multiplier должен быть ненулевым числом")
+        given = [k for k in ("linear", "polynomial", "function") if cfg.get(k) is not None]
+        if len(given) > 1:
+            out.append("задай что-то одно из linear, polynomial, function, а не %s"
+                       % " и ".join(given))
+        fn = cfg.get("function")
+        if fn is not None and fn not in RTD_R0:
+            out.append("function: %s, а не %r" % (" или ".join(sorted(RTD_R0)), fn))
+        poly = cfg.get("polynomial")
+        if poly is not None and (not isinstance(poly, list) or not poly or not all(
+                isinstance(c, (int, float)) and not isinstance(c, bool) for c in poly)):
+            out.append("polynomial — список чисел [c0, c1, c2, …]: значение = c0 + c1·x + c2·x²…")
+        lin = cfg.get("linear")
+        if lin is not None and (not isinstance(lin, dict) or not isinstance(
+                lin.get("gage_factor"), (int, float))):
+            out.append("linear — {\"gage_factor\": G, \"zero_reading\": Z}: значение = G·(x − Z)")
+        return out
+
+    def convert(self, raw):
+        out = {"raw": raw, "status": "ok"}
+        if raw is None:
+            out["status"] = "no_value"
+            return out
+        x = raw * self.raw_multiplier
+        out["input"] = round(x, 6)
+        if self.input_unit:
+            out["input_unit"] = self.input_unit
+        value = None
+        if self.function:
+            value = rtd_to_celsius(x, RTD_R0[self.function])
+            if value is None:
+                out["status"] = "out_of_range"
+                return out
+            out["unit"] = self.unit or "°C"
+        elif self.gage_factor is not None:
+            value = self.gage_factor * (x - (self.zero_reading or 0.0))
+        elif self.polynomial:
+            value = sum(c * x ** i for i, c in enumerate(self.polynomial))
+        else:
+            out["status"] = "input_only"
+            return out
+        out["value"] = round(value, 6)
+        if self.unit and "unit" not in out:
+            out["unit"] = self.unit
+        if self.quantity:
+            out["quantity"] = self.quantity
+        return out
+
+
 class Sensor(object):
     """One calibrated sensor on one logger channel."""
 
@@ -86,6 +204,22 @@ class Sensor(object):
         self.hz_max = cfg.get("hz_max")
         self.raw_unit = cfg.get("raw_unit", "auto")
         self._resolved_unit = None if self.raw_unit == "auto" else self.raw_unit
+
+        # Inputs of the channel. Files written before "sweep" existed describe
+        # VW sensors only, so a missing key means VW is on.
+        self.has_vw = cfg.get("sweep", "auto") not in (None, 0, False)
+        self.analog_code = ace.ANALOG_TYPES.get(cfg.get("analog") or "", 0)
+        scale = cfg.get("analog_scale")
+        self.analog_scale = None
+        if (isinstance(scale, dict) and not AnalogScale.problems(scale)
+                and self.analog_code not in (0, ace.ANALOG_TYPES["thermistor_3k"])):
+            self.analog_scale = AnalogScale(scale)
+
+    def analog_key(self):
+        """MES key of the channel's analog input other than the thermistor, or None."""
+        if self.analog_code in (0, ace.ANALOG_TYPES["thermistor_3k"]):
+            return None
+        return "t%02d" % self.analog_code
 
     @property
     def resolved_unit(self):
@@ -194,6 +328,65 @@ class Sensor(object):
                 out["percent_fsr"] = round(100.0 * p / self.full_scale, 2)
         return out
 
+    def convert_values(self, values):
+        """Every input of the channel -> engineering dict: VW, thermistor, other analog.
+
+        values is the MES dict of one channel, {"t01": ..., "t06": ..., "t02": ...}.
+        """
+        if self.has_vw:
+            out = self.convert(values.get("t01"), values.get("t06"))
+        else:
+            out = {"sensor": self.name, "status": "ok"}
+            for key in ("model", "serial"):
+                if getattr(self, key):
+                    out[key] = getattr(self, key)
+            ohms = values.get("t06") or None
+            temp_c = resistance_to_celsius(ohms, self.thermistor)
+            if ohms is not None:
+                out["thermistor_ohms"] = ohms
+            if temp_c is not None:
+                out["temperature_c"] = round(temp_c, 2)
+            elif self.analog_code == ace.ANALOG_TYPES["thermistor_3k"]:
+                out["status"] = "disconnected"
+        key = self.analog_key()
+        if key:
+            if self.analog_scale is not None:
+                out["analog"] = self.analog_scale.convert(values.get(key))
+            else:
+                out["analog"] = {"raw": values.get(key), "status": "no_scale"}
+            out["analog"]["label"] = ace.TYPE_LABELS[self.analog_code]
+            out["analog"]["key"] = key
+            if not self.has_vw and out["analog"]["status"] not in ("ok", "input_only"):
+                out["status"] = out["analog"]["status"]
+        return out
+
+
+def check_file(path):
+    """Everything wrong with a sensors file: channel inputs and installer scales."""
+    _plans, _rec, problems = ace.load_plan(path, strict=True)
+    if not path or not os.path.exists(path):
+        return problems, []
+    notes = []
+    with open(path) as fh:
+        doc = json.load(fh)
+    for key, cfg in sorted(doc.get("channels", {}).items()):
+        if str(key).startswith("_") or not isinstance(cfg, dict):
+            continue
+        where = "канал %s (%s)" % (key, cfg.get("name", "без имени"))
+        code = ace.ANALOG_TYPES.get(cfg.get("analog") or "", 0)
+        scale = cfg.get("analog_scale")
+        if scale is not None:
+            if code in (0, ace.ANALOG_TYPES["thermistor_3k"]):
+                notes.append("%s: analog_scale не нужен — %s" % (
+                    where, "аналоговый вход выключен" if not code
+                    else "у Thermistor 3K своя кривая"))
+            for p in AnalogScale.problems(scale):
+                problems.append("%s: analog_scale: %s" % (where, p))
+        elif code and code != ace.ANALOG_TYPES["thermistor_3k"]:
+            notes.append("%s: у входа %s нет analog_scale — будет видно только сырое число"
+                         % (where, ace.TYPE_LABELS[code]))
+    return problems, notes
+
 
 def load_sensors(path):
     """Read a sensors JSON file -> {channel:int -> Sensor}. {} when absent."""
@@ -212,13 +405,16 @@ def load_sensors(path):
 
 def _cli():
     import argparse
-    import ace_config as ace
     ap = argparse.ArgumentParser(description="ADL-200A raw counts -> engineering units")
     ap.add_argument("--sensors", default=os.environ.get(
         "ADL200A_SENSORS", "/etc/adl200a/sensors.json"))
     ap.add_argument("--channel", type=int)
     ap.add_argument("--raw", type=int, help="TYPE 01 integer")
     ap.add_argument("--therm", type=int, help="TYPE 06 integer (ohms)")
+    ap.add_argument("--analog", type=int, metavar="RAW",
+                    help="integer of the channel's other analog input (mV, Bridge, RTD ...)")
+    ap.add_argument("--check", action="store_true",
+                    help="validate the whole file: channel inputs and analog scales")
     ap.add_argument("--explain", type=int, metavar="RAW",
                     help="show every candidate scaling for one TYPE 01 integer")
     ap.add_argument("--types", action="store_true",
@@ -230,6 +426,15 @@ def _cli():
         for code in sorted(ace.TYPE_LABELS):
             print("  %02d  %-15s  %s" % (code, ace.TYPE_LABELS[code],
                                        ace.TYPE_UNITS.get(code) or "not measured yet"))
+        return
+
+    if args.check:
+        problems, notes = check_file(args.sensors)
+        for n in notes:
+            print("заметка: " + n)
+        if problems:
+            raise SystemExit("ошибки в %s:\n  - %s" % (args.sensors, "\n  - ".join(problems)))
+        print("%s в порядке" % args.sensors)
         return
 
     if args.explain is not None:
@@ -251,7 +456,10 @@ def _cli():
     s = sensors.get(args.channel)
     if s is None:
         raise SystemExit("channel %02d is not defined in %s" % (args.channel, args.sensors))
-    out = s.convert(args.raw, args.therm)
+    values = {"t01": args.raw, "t06": args.therm}
+    if s.analog_key():
+        values[s.analog_key()] = args.analog
+    out = s.convert_values(values)
     if args.channel in plans:
         out["inputs"] = dict(("t%02d" % code, "%s, %s" % (ace.TYPE_LABELS[code],
                                                           ace.TYPE_UNITS.get(code) or "?"))

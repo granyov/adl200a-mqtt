@@ -219,6 +219,16 @@ mV, Bridge, Serial, Resistance, RTD (`calibration.py --types`). Оборванн
 (`live.sh` и `calibration.py`); сама служба калибровку не читает и в MQTT её не
 подмешивает.
 
+**Масштабы аналоговых входов** — mV, Bridge, Resistance, RTD, Serial — задаёт
+установщик в блоке `analog_scale` канала: множитель «сырое целое → величина на
+входе» (подбирается по эталону) и пересчёт — `linear`, `polynomial` или готовая
+кривая `pt100`/`pt1000`. Как подобрать и примеры — в
+[инструкции по подключению](docs/install-ace-1910.md#11-другие-датчики-mv-bridge-resistance-rtd-serial).
+Проверить файл целиком: `calibration.py --check`.
+
+**Пошаговая инструкция для установщиков** — от паспорта датчика до проверенных
+показаний: [docs/install-ace-1910.md](docs/install-ace-1910.md).
+
 Считается ровно по формулам сертификата:
 
 - давление (основное) — `P = A·Hz² + B·Hz + C − Tct·(Tc − Ti)`;
@@ -352,6 +362,7 @@ python3 /opt/adl200a/calibration.py --channel 1 --raw 294720 --therm 3344
 - `channels.py` — настройка каналов и собственной записи прибора по файлу;
 - `ace_config.py` — поля `SCC`, полосы, коды типов, разбор файла настройки;
 - `sensors.example.json` — шаблон настройки и калибровок по каналам;
+- `docs/install-ace-1910.md` — инструкция установщика: ячейка ACE 1910/1911 и масштабы аналоговых входов;
 - `tests/` — тесты и эмулятор логгера на псевдотерминале (`fake_logger.py`):
   `python3 -m unittest discover tests` (сквозные нужны pyserial и paho-mqtt);
 - `ace.py` — CLI для одной ACE-команды (`ace.py GTT`, `ace.py MEA`, …);

@@ -1,6 +1,6 @@
 {
   "_about": "Logger configuration for the ADL-200A, one entry per logger channel. \"sweep\" and \"analog\" set the channel inputs (channels.py --apply writes them to the logger); the rest is typed in from the manufacturer's calibration sheet and is used by the console tools only. Copy to /etc/adl200a/sensors.json.",
-  "_inputs": "sweep: \"auto\" (narrowest band covering hz_min..hz_max), 1..4, or null for no VW input. analog: thermistor_3k, mv, bridge, resistance, rtd, serial, or null. Optional top-level \"logger\": {\"recording\": {\"interval_min\": 15, \"mode\": \"fixed\", \"when_full\": \"overwrite\"}} sets the logger's own recording.",
+  "_inputs": "sweep: \"auto\" (narrowest band covering hz_min..hz_max), 1..4, or null for no VW input. analog: thermistor_3k, mv, bridge, resistance, rtd, serial, or null. Optional top-level \"logger\": {\"recording\": {\"interval_min\": 15, \"mode\": \"fixed\", \"when_full\": \"overwrite\"}} sets the logger's own recording. Other analog inputs (mv, bridge, resistance, rtd, serial) take an installer \"analog_scale\": {\"raw_multiplier\": ..., \"linear\" | \"polynomial\" | \"function\": \"pt100\"/\"pt1000\", \"unit\": ...} — see docs/install-ace-1910.md, section 11.",
   "_raw_unit": "Как читать целое TYPE 01: hz, hz_x100, digits, digits_x10 или auto (подбирается по hz_min/hz_max на первом реальном отсчёте и запоминается). На этом приборе подтверждено hz_x100.",
   "channels": {
     "01": {

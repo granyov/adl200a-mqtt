@@ -42,6 +42,10 @@ class Logger(object):
         for spec in args.sensor:
             ch, hz, ohm = spec.split(":")
             self.sensors[int(ch)] = (float(hz), int(ohm))
+        self.analog = {}
+        for spec in args.analog:
+            ch, raw = spec.split(":")
+            self.analog[int(ch)] = int(raw)
 
     def reply(self, body):
         return ("<<!01,%02d,%s;\r" % (self.id, body)).encode()
@@ -95,7 +99,7 @@ class Logger(object):
                 elif code == ace.ANALOG_TYPES["thermistor_3k"]:
                     value = ohm
                 else:
-                    value = 0
+                    value = self.analog.get(ch, 0)
                 out(self.reply("MES:%02d,%02d,%s,%010d" % (ch, code, stamp, value)))
 
 
@@ -105,6 +109,8 @@ def main():
     ap.add_argument("--preset", choices=sorted(PRESETS), default="factory")
     ap.add_argument("--sensor", action="append", default=[],
                     help="CH:HZ:OHM — a VW sensor with a thermistor on channel CH")
+    ap.add_argument("--analog", action="append", default=[],
+                    help="CH:RAW — integer the channel's other analog input (mV, RTD ...) reports")
     ap.add_argument("--per-channel", type=float, default=0.3,
                     help="seconds per channel during MEA (the real unit: ~5)")
     ap.add_argument("--log", action="store_true", help="echo requests to stderr")
