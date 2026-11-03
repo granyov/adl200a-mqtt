@@ -212,6 +212,7 @@ def load_sensors(path):
 
 def _cli():
     import argparse
+    import ace_config as ace
     ap = argparse.ArgumentParser(description="ADL-200A raw counts -> engineering units")
     ap.add_argument("--sensors", default=os.environ.get(
         "ADL200A_SENSORS", "/etc/adl200a/sensors.json"))
@@ -220,10 +221,19 @@ def _cli():
     ap.add_argument("--therm", type=int, help="TYPE 06 integer (ohms)")
     ap.add_argument("--explain", type=int, metavar="RAW",
                     help="show every candidate scaling for one TYPE 01 integer")
+    ap.add_argument("--types", action="store_true",
+                    help="list the MES TYPE codes and what their integers mean")
     args = ap.parse_args()
 
+    if args.types:
+        print("TYPE  input            value")
+        for code in sorted(ace.TYPE_LABELS):
+            print("  %02d  %-15s  %s" % (code, ace.TYPE_LABELS[code],
+                                       ace.TYPE_UNITS.get(code) or "not measured yet"))
+        return
+
     if args.explain is not None:
-        print("raw TYPE 01 = %d" % args.explain)
+        print("raw TYPE 01 (VW) = %d" % args.explain)
         for unit, hz in sorted(candidate_frequencies(args.explain).items()):
             print("  %-11s -> %9.2f Hz   %10.2f digits" % (unit, hz, hz * hz / 1000.0))
         return
@@ -231,15 +241,22 @@ def _cli():
     sensors = load_sensors(args.sensors)
     if not sensors:
         raise SystemExit("no sensor definitions in %s" % args.sensors)
+    plans, _rec, _problems = ace.load_plan(args.sensors, strict=False)
     if args.channel is None:
         for ch in sorted(sensors):
             s = sensors[ch]
-            print("ch %02d  %s  model %s  s/n %s" % (ch, s.name, s.model, s.serial))
+            inputs = plans[ch].describe() if ch in plans else "inputs not declared"
+            print("ch %02d  %s  model %s  s/n %s  —  %s" % (ch, s.name, s.model, s.serial, inputs))
         return
     s = sensors.get(args.channel)
     if s is None:
         raise SystemExit("channel %02d is not defined in %s" % (args.channel, args.sensors))
-    print(json.dumps(s.convert(args.raw, args.therm), indent=2, ensure_ascii=False))
+    out = s.convert(args.raw, args.therm)
+    if args.channel in plans:
+        out["inputs"] = dict(("t%02d" % code, "%s, %s" % (ace.TYPE_LABELS[code],
+                                                          ace.TYPE_UNITS.get(code) or "?"))
+                             for code in ace.frame_types(plans[args.channel].fields))
+    print(json.dumps(out, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":

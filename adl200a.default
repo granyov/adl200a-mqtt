@@ -14,7 +14,8 @@ ADL200A_MQTT_HOST=127.0.0.1
 ADL200A_MQTT_PORT=1883
 ADL200A_TOPIC=adl200a
 
-# Sensor calibration, one entry per logger channel (see sensors.example.json).
-# Used by the console tools only (live.sh, calibration.py). The service itself
+# Channel setup and sensor calibration, one entry per logger channel (see
+# sensors.example.json). channels.py --apply writes the channel inputs to the
+# logger; live.sh and calibration.py use the calibration. The service itself
 # publishes the logger's raw counts and never reads this file.
 ADL200A_SENSORS=/etc/adl200a/sensors.json

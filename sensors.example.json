@@ -1,5 +1,6 @@
 {
-  "_about": "Sensor calibration for the ADL-200A. Keys are logger channels (GCC shows which are enabled). Values are typed in from the manufacturer's calibration sheet. Copy to /etc/adl200a/sensors.json.",
+  "_about": "Logger configuration for the ADL-200A, one entry per logger channel. \"sweep\" and \"analog\" set the channel inputs (channels.py --apply writes them to the logger); the rest is typed in from the manufacturer's calibration sheet and is used by the console tools only. Copy to /etc/adl200a/sensors.json.",
+  "_inputs": "sweep: \"auto\" (narrowest band covering hz_min..hz_max), 1..4, or null for no VW input. analog: thermistor_3k, mv, bridge, resistance, rtd, serial, or null. Optional top-level \"logger\": {\"recording\": {\"interval_min\": 15, \"mode\": \"fixed\", \"when_full\": \"overwrite\"}} sets the logger's own recording.",
   "_raw_unit": "Как читать целое TYPE 01: hz, hz_x100, digits, digits_x10 или auto (подбирается по hz_min/hz_max на первом реальном отсчёте и запоминается). На этом приборе подтверждено hz_x100.",
   "channels": {
     "01": {
@@ -8,6 +9,8 @@
       "serial": "587968",
       "unit": "kgf/cm2",
       "range": 3.5,
+      "sweep": "auto",
+      "analog": "thermistor_3k",
       "cal_date": "2025-11-25",
       "cal_temp_c": 24.0,
       "initial_temp_c": null,

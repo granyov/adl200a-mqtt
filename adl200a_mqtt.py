@@ -8,9 +8,9 @@ Protocol (ACE ASCII over RS-232, reverse-engineered from ADL2Pro.exe, confirmed
 on hardware):
   Request : >>?1,<ID>,<CMD>;\\r          (CR only, no checksum)
   Response: <<!01,<ID>,<CMD>:<data>;\\r
-  MEA (measure all, ~26 s) -> per channel & type:
+  MEA (channels enabled in GCC, ~5 s each) -> per channel & input type:
      <<!01,<ID>,MES:<CH>,<TYPE>,<yy/mm/dd>,<hh:mm:ss>,<VALUE>;\\r
-     TYPE 01 = primary reading (VW digits/freq), TYPE 06 = secondary (temperature)
+     TYPE = input type code: 01 VW (Hz x100), 06 thermistor (ohms), ... (ace_config.py)
 
 Env vars (defaults in parentheses):
   ADL200A_PORT (/dev/ttyUSB0)  ADL200A_BAUD (38400)  ADL200A_ID (1)
@@ -21,6 +21,10 @@ MQTT carries the logger's raw counts and nothing else — no calibration is appl
 here, so the stored series never depends on a calibration file that may later be
 corrected. Engineering units are for checking by eye at the console: live.sh and
 calibration.py, both reading /etc/adl200a/sensors.json.
+
+What the raw values mean is published retained on <topic>/config: the channel
+configuration read from the logger (GCC), decoded — sweep band, analog type and
+the meaning of every tNN key per channel.
 """
 import json
 import logging
@@ -32,6 +36,8 @@ from datetime import datetime, timezone
 
 import serial
 import paho.mqtt.client as mqtt
+
+import ace_config
 
 PORT = os.environ.get("ADL200A_PORT", "/dev/ttyUSB0")
 BAUD = int(os.environ.get("ADL200A_BAUD", "38400"))
@@ -47,7 +53,6 @@ MIN_GAP = 5.0               # never start a sweep right on top of the previous o
 SECONDS_PER_CHANNEL = 6.0   # generous: the logger answers ~1 channel per 3 s
 
 MES_RE = re.compile(rb"<<!(\d+),(\d+),MES:(\d+),(\d+),([0-9/]+),([0-9:]+),(\d+);")
-GCC_RE = re.compile(rb"<<!\d+,\d+,GCC:(\d+),(\d+),")
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)-7s %(message)s",
@@ -94,13 +99,14 @@ def open_serial() -> serial.Serial:
             time.sleep(5)
 
 
-def enabled_channels(ser: serial.Serial) -> set:
-    """Ask GCC which channels the logger actually sweeps.
+def read_channel_config(ser: serial.Serial) -> dict:
+    """Read GCC: {channel: (f2..f6)} for all 16 channels, or {} if it came incomplete.
 
     A MEA answer arrives channel by channel with seconds of silence in between,
     so "no data for a while" is not a reliable end-of-sweep marker: it truncates
-    the sweep and the leftover frames surface in the next cycle. Knowing how many
-    channels to expect lets measure() stop exactly when the sweep is complete.
+    the sweep and the leftover frames surface in the next cycle. Knowing which
+    channels and which input types to expect lets measure() stop exactly when
+    the sweep is complete.
     """
     # Сначала дать прибору договорить: он долго досылает хвост развёртки, и
     # ответ на GCC приедет вперемешку с кадрами MES.
@@ -122,18 +128,40 @@ def enabled_channels(ser: serial.Serial) -> set:
         if d:
             buf += d
             last = time.time()
-            if len(GCC_RE.findall(bytes(buf))) >= 16:
+            if len(ace_config.parse_gcc(bytes(buf))) >= 16:
                 break
         elif buf and time.time() - last > 2.0:
             break
-    seen = GCC_RE.findall(bytes(buf))
-    if len(seen) < 16:
+    cfg = ace_config.parse_gcc(bytes(buf))
+    if len(cfg) < 16:
         # Неполный ответ — это "прибор не договорил", а не "каналов меньше".
         # Лучше ничего не знать, чем знать неправду: measure() тогда уйдёт на
         # запасной порог тишины.
-        log.warning("GCC пришёл неполным (%d из 16) — прибор занят", len(seen))
-        return set()
-    return set(int(ch) for ch, en in seen if int(en))
+        log.warning("GCC пришёл неполным (%d из 16) — прибор занят", len(cfg))
+        return {}
+    return cfg
+
+
+def expected_frames(cfg: dict) -> dict:
+    """{channel: {TYPE codes}} the next MEA must deliver, from the GCC config."""
+    out = {}
+    for ch, fields in cfg.items():
+        types = set(ace_config.frame_types(fields))
+        if types:
+            out[ch] = types
+    return out
+
+
+def publish_config(client, cfg: dict) -> None:
+    """Retained, so a consumer that subscribes later still learns what tNN mean."""
+    payload = {"timestamp": datetime.now(timezone.utc).isoformat(),
+               "logger_id": LOGGER_ID,
+               "channels": ace_config.decode(cfg)}
+    # qos=1: paho держит такое сообщение в очереди, пока не подключится к брокеру
+    client.publish("%s/config" % TOPIC, json.dumps(payload, ensure_ascii=False),
+                   qos=1, retain=True)
+    for item in payload["channels"]:
+        log.info("ch %02d: %s", item["channel"], item["setting"])
 
 
 def drain(ser: serial.Serial, quiet: float = 2.0, cap: float = 120.0) -> int:
@@ -155,13 +183,13 @@ def drain(ser: serial.Serial, quiet: float = 2.0, cap: float = 120.0) -> int:
     return stale
 
 
-def sweep_budget(expected: set) -> float:
+def sweep_budget(expected: dict) -> float:
     """How long one sweep may take. Grows with the number of enabled channels."""
     return max(45.0, 20.0 + SECONDS_PER_CHANNEL * (len(expected) or 16))
 
 
-def measure(ser: serial.Serial, expected: set) -> bytes:
-    """Send MEA and collect the response until every expected channel is in."""
+def measure(ser: serial.Serial, expected: dict) -> bytes:
+    """Send MEA and collect the response until every expected frame is in."""
     cmd = (">>?1,%d,MEA;\r" % LOGGER_ID).encode()
     ser.reset_input_buffer()
     ser.write(cmd)
@@ -177,7 +205,8 @@ def measure(ser: serial.Serial, expected: set) -> bytes:
             last = time.time()
             if expected:
                 got = parse(bytes(buf))
-                if all(len(got.get(c, {}).get("values", ())) >= 2 for c in expected):
+                if all(types <= set(int(k[1:]) for k in got.get(c, {}).get("values", ()))
+                       for c, types in expected.items()):
                     break
         elif buf and time.time() - last > MEA_IDLE_DONE:
             break
@@ -200,9 +229,14 @@ def main() -> None:
              PORT, BAUD, LOGGER_ID, POLL_INTERVAL, MQTT_HOST, MQTT_PORT, TOPIC)
     client = make_mqtt()
     ser = open_serial()
-    expected = enabled_channels(ser)
-    log.info("Logger sweeps %s", ("channels " + ", ".join(
-        "%02d" % c for c in sorted(expected))) if expected else "an unknown set of channels")
+    cfg = read_channel_config(ser)
+    expected = expected_frames(cfg)
+    if cfg:
+        log.info("Logger sweeps %s", ("channels " + ", ".join(
+            "%02d" % c for c in sorted(expected))) if expected else "no channels at all")
+        publish_config(client, cfg)
+    else:
+        log.info("Logger sweeps an unknown set of channels")
     since_probe = 0
     warned = False
     while True:
@@ -212,16 +246,18 @@ def main() -> None:
             if stale:
                 log.warning("Dropped %d stale bytes before MEA - the previous sweep "
                             "had not finished", stale)
-            if not expected:
+            if not cfg:
                 # Не долбить GCC каждый цикл: на занятом приборе это лишние
                 # полминуты впустую. Пробуем раз в десять циклов.
                 since_probe += 1
                 if since_probe >= 10:
                     since_probe = 0
-                    expected = enabled_channels(ser)
-                    if expected:
+                    cfg = read_channel_config(ser)
+                    expected = expected_frames(cfg)
+                    if cfg:
                         log.info("Logger sweeps channels %s", ", ".join(
                             "%02d" % c for c in sorted(expected)))
+                        publish_config(client, cfg)
             t_sweep = time.monotonic()
             raw = measure(ser, expected)
             sweep = time.monotonic() - t_sweep
@@ -229,7 +265,7 @@ def main() -> None:
                 warned = True
                 log.warning("A sweep takes %.0f s but ADL200A_INTERVAL is %d s. "
                             "Cycles will run at the logger's pace instead; raise the "
-                            "interval or enable fewer channels (channels.py --only ...)",
+                            "interval or enable fewer channels (channels.py --apply)",
                             sweep, POLL_INTERVAL)
             chans = parse(raw)
             if chans:

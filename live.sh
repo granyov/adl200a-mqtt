@@ -106,9 +106,11 @@ import sys
 import time
 
 sys.path.insert(0, os.environ.get("ADL200A_PREFIX", "/opt/adl200a"))
+import ace_config as ace
 import calibration
 
 MES = re.compile(r"MES:(\d+),(\d+),([0-9/]+),([0-9:]+),(\d+);")
+SHOWN_TYPES = ("t01", "t06")        # у этих свои колонки, остальные — в хвосте строки
 
 C = {"reset": "\033[0m", "dim": "\033[2m", "bold": "\033[1m",
      "ok": "\033[32m", "warn": "\033[33m", "bad": "\033[31m", "head": "\033[36m"}
@@ -123,6 +125,9 @@ class Session(object):
     def __init__(self, args):
         self.args = args
         self.sensors = calibration.load_sensors(args.sensors)
+        self.plans, _rec, _problems = ace.load_plan(args.sensors, strict=False)
+        self.device = {}                # конфигурация из прибора: GCC или <topic>/config
+        self.gcc = {}
         self.color = sys.stdout.isatty()
         self.log = open(args.log, "a") if args.log else None
         self.pending = {}
@@ -163,13 +168,15 @@ class Session(object):
                     ch, s.name, s.model, s.serial, s.full_scale, s.unit))
         else:
             self.emit("калибровки нет (%s) — только сырые отсчёты" % self.args.sensors)
+        for ch in sorted(self.plans):
+            self.emit("по файлу ch%02d: %s" % (ch, self.plans[ch].describe()))
         if self.args.zero:
             self.emit("тарирование: Δ считается от первого годного отсчёта канала")
         self.emit("Ctrl-C — выход и сводка")
         self.header()
 
     def columns(self):
-        cols = [("время", 8), ("ch", 2), ("t01", 9), ("t06", 8),
+        cols = [("время", 8), ("ch", 2), ("VW t01", 9), ("терм t06", 8),
                 ("Гц", 8), ("digits", 9), ("кгс/см²", 10)]
         if self.args.zero:
             cols.append(("Δ", 9))
@@ -207,6 +214,12 @@ class Session(object):
         if line.startswith("{"):
             self.from_json(line)
             return
+        if "GCC:" in line:
+            self.gcc.update(ace.parse_gcc(line))
+            if len(self.gcc) == 16:
+                self.on_device_config(self.gcc)
+                self.gcc = {}
+            return
         for ch, typ, _date, tm, val in MES.findall(line):
             self.add(int(ch), int(typ), int(val), tm)
 
@@ -215,12 +228,40 @@ class Session(object):
             doc = json.loads(line)
         except ValueError:
             return
+        if "logger_id" in doc and "channels" in doc:          # <topic>/config
+            cfg = dict((ch, ace.OFF) for ch in range(1, 17))
+            for item in doc["channels"]:
+                cfg[int(item["channel"])] = tuple(item["fields"])
+            self.on_device_config(cfg)
+            return
         ch = doc.get("channel")
-        vals = doc.get("values") or {}
         if ch is None:
             return
-        self.show(int(ch), vals.get("t01"), vals.get("t06"),
+        self.show(int(ch), doc.get("values") or {},
                   doc.get("dev_time", time.strftime("%H:%M:%S")))
+
+    def on_device_config(self, cfg):
+        """Показать, как настроен прибор, и где это расходится с файлом."""
+        self.device = dict(cfg)
+        self.emit("")
+        for ch in sorted(cfg):
+            if cfg[ch][0]:
+                msg = "в приборе ch%02d: %s" % (ch, ace.describe(cfg[ch]))
+                self.emit(msg, self.paint(msg, "dim"))
+        for ch in sorted(self.plans):
+            plan = self.plans[ch]
+            if cfg.get(ch) != plan.fields:
+                msg = ("ch%02d НЕ КАК В ФАЙЛЕ: в приборе %s, по файлу %s — "
+                       "поправит channels.py --apply"
+                       % (ch, ace.describe(cfg.get(ch, ace.OFF)), plan.describe()))
+                self.emit(msg, self.paint(msg, "bad"))
+        if self.plans:
+            extra = [ch for ch in sorted(cfg) if cfg[ch][0] and ch not in self.plans]
+            if extra:
+                msg = ("включены, но в файле их нет: %s — каждый удлиняет развёртку ~5 с"
+                       % ", ".join("%02d" % c for c in extra))
+                self.emit(msg, self.paint(msg, "warn"))
+        self.header()
 
     def add(self, ch, typ, val, tm):
         slot = self.pending.setdefault(ch, {"time": tm})
@@ -234,7 +275,8 @@ class Session(object):
     def flush_channel(self, ch):
         slot = self.pending.pop(ch, None)
         if slot:
-            self.show(ch, slot.get("t01"), slot.get("t06"), slot["time"])
+            tm = slot.pop("time")
+            self.show(ch, slot, tm)
 
     def flush(self):
         for ch in sorted(self.pending):
@@ -242,9 +284,12 @@ class Session(object):
 
     # ---------- вывод строки ----------
 
-    def show(self, ch, t01, t06, dev_time):
+    def show(self, ch, values, dev_time):
         if self.args.channel and ch != self.args.channel:
             return
+        if self.args.limit and self.printed >= self.args.limit:
+            return              # лимит выбран; сводка дочищает очередь — молча
+        t01, t06 = values.get("t01"), values.get("t06")
         sensor = self.sensors.get(ch)
         if sensor is not None:
             eng = sensor.convert(t01, t06)
@@ -288,7 +333,19 @@ class Session(object):
         plain = "  ".join(c.rjust(w) for c, w in zip(cells, widths))
         status = eng.get("status", "raw")
         label = STATUS_RU.get(status, status)
-        note = eng.get("note")
+        notes = [eng["note"]] if eng.get("note") else []
+        fields = self.device.get(ch)
+        hz = eng.get("frequency_hz")
+        if fields and fields[1] and hz and fields[2] in ace.SWEEP_BANDS:
+            lo, hi = ace.SWEEP_BANDS[fields[2]]
+            if not lo <= hz <= hi:
+                notes.append("%.0f Гц вне полосы прибора %s" % (hz, ace.band_label(fields[2])))
+        for key in sorted(values):
+            if key not in SHOWN_TYPES:
+                code = int(key[1:])
+                notes.append("%s(%s)=%s" % (ace.TYPE_LABELS.get(code, "тип %d" % code),
+                                            key, values[key]))
+        note = "; ".join(notes)
         line = plain + "  " + label + ("  (%s)" % note if note else "")
         colored = plain + "  " + self.paint(label, STATUS_COLOR.get(status)) \
             + (self.paint("  (%s)" % note, "dim") if note else "")
@@ -362,10 +419,11 @@ cat > "$PYPOLLER" <<'PYEOF'
 
 Ответ на MEA приходит канал за каналом с паузами в несколько секунд, поэтому
 "давно нет данных" — плохой признак конца развёртки: он режет её пополам, и
-остаток всплывает в следующем цикле. Спрашиваем у прибора, какие каналы
-включены, и ждём ровно их.
+остаток всплывает в следующем цикле. Спрашиваем у прибора, какие каналы и
+какие входы на них включены, и ждём ровно эти кадры.
 """
 import argparse
+import os
 import re
 import signal
 import sys
@@ -373,15 +431,17 @@ import time
 
 import serial
 
+sys.path.insert(0, os.environ.get("ADL200A_PREFIX", "/opt/adl200a"))
+import ace_config as ace
+
 MES = re.compile(rb"<<!\d+,\d+,MES:(\d+),(\d+),[0-9/]+,[0-9:]+,\d+;")
-GCC = re.compile(rb"<<!\d+,\d+,GCC:(\d+),(\d+),")
+SECONDS_PER_CHANNEL = 6.0       # с запасом: прибор отдаёт ~канал в 5 с
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--port", required=True)
 ap.add_argument("--baud", type=int, default=38400)
 ap.add_argument("--id", type=int, default=1)
 ap.add_argument("--gap", type=float, default=0.0)
-ap.add_argument("--cap", type=float, default=45.0)
 ap.add_argument("--idle", type=float, default=6.0)
 args = ap.parse_args()
 
@@ -433,12 +493,17 @@ def collect(cmd, done, cap, idle):
     return bytes(buf)
 
 
-raw = collect("GCC", lambda b: len(GCC.findall(b)) >= 16, 12.0, 1.0)
-expected = set(int(m.group(1)) for m in GCC.finditer(raw) if int(m.group(2)))
+cfg = ace.parse_gcc(collect("GCC", lambda b: len(ace.parse_gcc(b)) >= 16, 30.0, 2.0))
+expected = {}
+if len(cfg) == 16:
+    for ch, fields in cfg.items():
+        if ace.frame_types(fields):
+            expected[ch] = set(ace.frame_types(fields))
 sys.stdout.write("---INFO--- прибор опрашивает %s\n" % (
     "каналы " + ", ".join("%02d" % c for c in sorted(expected)) if expected
-    else "неизвестно какие каналы (GCC не ответил)"))
+    else "неизвестно какие каналы (GCC не ответил целиком)"))
 sys.stdout.flush()
+cap = max(45.0, 20.0 + SECONDS_PER_CHANNEL * (len(expected) or 16))
 
 
 def swept(b):
@@ -447,12 +512,12 @@ def swept(b):
     seen = {}
     for m in MES.finditer(b):
         seen.setdefault(int(m.group(1)), set()).add(int(m.group(2)))
-    return all(len(seen.get(c, ())) >= 2 for c in expected)
+    return all(types <= seen.get(c, set()) for c, types in expected.items())
 
 
 try:
     while True:
-        collect("MEA", swept, args.cap, args.idle)
+        collect("MEA", swept, cap, args.idle)
         sys.stdout.write("---CYCLE---\n")
         sys.stdout.flush()
         if args.gap:
@@ -491,8 +556,9 @@ if [ "$MODE" = direct ]; then
     wait "$PIPE" 2>/dev/null
 else
     command -v mosquitto_sub >/dev/null || { echo "нет mosquitto_sub (apt install mosquitto-clients)" >&2; exit 1; }
-    RENDER+=(--source "MQTT $MQTT_HOST:$MQTT_PORT, топик $TOPIC/ch/+")
-    $STDBUF mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC/ch/+" | "${RENDER[@]}" &
+    RENDER+=(--source "MQTT $MQTT_HOST:$MQTT_PORT, топики $TOPIC/ch/+ и $TOPIC/config")
+    $STDBUF mosquitto_sub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC/ch/+" -t "$TOPIC/config" \
+        | "${RENDER[@]}" &
     PIPE=$!
     wait "$PIPE" 2>/dev/null
 fi
