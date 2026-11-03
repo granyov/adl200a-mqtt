@@ -10,6 +10,11 @@ mV, Bridge, Resistance, RTD и Serial.
 Команды выполняются на плате, к которой подключён логгер (`ssh -t <пользователь>@<плата>`).
 Всё ПО лежит в `/opt/adl200a`, настройки — в `/etc/adl200a/sensors.json`.
 
+Всё нужное — на GitHub: **https://github.com/granyov/adl200a-mqtt**. Эта инструкция с
+помощниками (паспорт → настройки, подбор множителя, журнал) — страницей:
+**https://granyov.github.io/adl200a-mqtt/**. ПО — в разделе
+[Releases](https://github.com/granyov/adl200a-mqtt/releases/latest).
+
 ---
 
 ## 1. Что понадобится
@@ -18,11 +23,7 @@ mV, Bridge, Resistance, RTD и Serial.
 - **Паспорт калибровки (Calibration Sheet) именно этой ячейки** — по серийному
   номеру. У каждой ячейки свои коэффициенты; чужие брать нельзя.
 - Логгер ACE ADL-200A и кабель RS-232 до платы.
-- Плата с установленным `adl200a-mqtt`, в котором есть `channels.py --apply`.
-  Проверить:
-  ```sh
-  python3 /opt/adl200a/channels.py -h | grep -- --apply
-  ```
+- Плата с `adl200a-mqtt` версии **1.1.0 или новее** — установка в разделе 1а.
 - Журнал установки (шаблон в разделе 10).
 
 ### Коротко о датчике
@@ -39,6 +40,51 @@ mV, Bridge, Resistance, RTD и Serial.
 
 Частота струны **падает** с ростом давления: у ячейки s/n 587968 это 2991 Гц
 без нагрузки и 2280 Гц на пределе 3,5 кгс/см².
+
+---
+
+## 1а. Установка ПО с GitHub
+
+Файлы — на странице релиза: https://github.com/granyov/adl200a-mqtt/releases/latest
+
+**UVON на Astra 4.7.11 arm64, без интернета** — полный комплект: программа, Python,
+Mosquitto и все зависимости одним архивом. Скачай `adl200a-mqtt-<версия>-offline-astra-4.7.11-arm64.tar.gz`
+и перенеси на плату:
+
+```sh
+scp adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz <пользователь>@<плата>:
+```
+
+На плате:
+
+```sh
+tar -xzf adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz
+cd adl200a-offline-astra-4.7.11-arm64
+sudo sh install-offline.sh
+sudo adl200a-configure /dev/ttyS5 38400
+```
+
+Установщик сверяет контрольные суммы, архитектуру и версию ОС и не ходит в интернет.
+Комплект — только для Astra 4.7.11 arm64. В `adl200a-configure` укажи порт, к
+которому подключён логгер (`/dev/ttyS4` или `/dev/ttyS5` на UVON, `/dev/ttyUSB0` для Moxa).
+
+**Другая плата с Debian или Astra**, где уже есть Python 3.7+, systemd и Mosquitto, —
+только пакет программы:
+
+```sh
+sudo dpkg -i adl200a-mqtt_1.1.0_all.deb
+sudo adl200a-configure /dev/ttyS5 38400
+```
+
+Обновление ставится так же, поверх: настройки `/etc/default/adl200a` и
+`/etc/adl200a/sensors.json` сохраняются. Проверить версию:
+
+```sh
+dpkg -s adl200a-mqtt | grep Version
+```
+
+Пример настроек и эта инструкция после установки лежат в
+`/usr/share/doc/adl200a-mqtt/`.
 
 ---
 
@@ -81,8 +127,9 @@ mV, Bridge, Resistance, RTD и Serial.
   примерно на 0,02 °C, 300 м — примерно на 0,2 °C.
 - **Запиши номер канала** (1–16) в журнал и промаркируй кабель у клеммника.
 
-Логгер подключается к плате по RS-232, 38 400 бод, 8N1. Порт задан в
-`/etc/default/adl200a` (`ADL200A_PORT`). Проверить, что логгер отвечает:
+Логгер подключается к плате по RS-232, 38 400 бод, 8N1. Порт задаёт
+`adl200a-configure` (раздел 1а), он записывается в `/etc/default/adl200a`
+(`ADL200A_PORT`). Проверить, что логгер отвечает:
 
 ```sh
 sudo systemctl stop adl200a
@@ -227,7 +274,8 @@ python3 /opt/adl200a/channels.py --apply --yes
 
 Программа сама остановит службу, снимет копию старой настройки, запишет,
 перечитает, сверит и вернёт службу. В конце должно быть `всё применилось`.
-Вернуть как было:
+Куда легла копия, программа печатает (обычно `/var/lib/adl200a/gcc-backup.txt`;
+если у твоего пользователя туда нет доступа — в домашний каталог). Вернуть как было:
 
 ```sh
 python3 /opt/adl200a/channels.py --restore /var/lib/adl200a/gcc-backup.txt --yes

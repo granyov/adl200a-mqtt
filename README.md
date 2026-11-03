@@ -8,6 +8,24 @@
 фирменной программы `ADL2Pro.exe` и подтверждён на живом железе. Полное описание —
 в **[PROTOCOL.md](PROTOCOL.md)**.
 
+## Для установщиков
+
+| Что | Где |
+|-----|-----|
+| Страница установщика: инструкция и помощники (паспорт → настройки, подбор множителя, журнал) | **https://granyov.github.io/adl200a-mqtt/** |
+| ПО для платы: офлайн-комплект для UVON / Astra 4.7.11 arm64 и deb-пакет | **[Releases → последний](https://github.com/granyov/adl200a-mqtt/releases/latest)** |
+| Инструкция по подключению ячейки ACE 1910 / 1911 — одним файлом | [docs/install-ace-1910.md](docs/install-ace-1910.md) |
+| Шаблон настроек датчиков | [sensors.example.json](sensors.example.json) |
+
+Коротко, на плате UVON:
+
+```sh
+tar -xzf adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz
+cd adl200a-offline-astra-4.7.11-arm64
+sudo sh install-offline.sh
+sudo adl200a-configure /dev/ttyS5 38400
+```
+
 ## Установка из deb без интернета
 
 Пакет для UVON / Astra включает pyserial и paho-mqtt, подтверждённую доставку
@@ -109,7 +127,7 @@ sudo systemctl start adl200a
 PUBACK подтверждает приём MQTT-брокером. Для подтверждения обработки конечным
 потребителем нужен отдельный ответ от этого потребителя.
 
-`complete=true` означает, что получены `t01` и `t06` всех ожидаемых каналов с одним
+`complete=true` означает, что получены все настроенные входы (по `GCC`: `t01`, `t06` и т. д.) всех ожидаемых каналов с одним
 временем измерения прибора. При тайм-ауте передаются собранные данные с
 `complete=false`, `missing_channels` и `end_reason`. Если GCC ещё не прочитан,
 `complete=null`: полнота неизвестна. Известный набор каналов ожидается до общего

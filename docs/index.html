@@ -1,0 +1,1135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Установка датчиков ADL-200A</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Mono&family=PT+Sans:ital,wght@0,400;0,700;1,400&family=PT+Sans+Narrow:wght@400;700&display=swap">
+<style>
+/* Layout: полевой справочник — слева липкое оглавление на широком экране, на телефоне одна колонка; помощники стоят внутри того шага, которому служат */
+:root {
+  --paper: #f3f6f5;
+  --sheet: #ffffff;
+  --ink: #1b2422;
+  --muted: #56645f;
+  --rule: #d3dbd8;
+  --accent: #1d5d8a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2edf5;
+  --good: #2b7a34; --good-soft: #e5f1e6;
+  --warn: #9a5200; --warn-soft: #fbeedd;
+  --bad: #b02a20; --bad-soft: #fbe7e5;
+  --code-bg: #eaefed;
+  --wire-red: #c62828; --wire-black: #1c1c1c; --wire-green: #2e7d32; --wire-white: #f4f4f4;
+  --font-display: "PT Sans Narrow", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "PT Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "PT Mono", ui-monospace, Menlo, Consolas, monospace;
+  --step-1: 0.875rem; --step0: 1rem; --step1: 1.2rem; --step2: 1.55rem; --step3: 2.3rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111614; --sheet: #182020; --ink: #e2e9e6; --muted: #98a6a1; --rule: #2c3734;
+    --accent: #84b9de; --accent-ink: #0d1a24; --accent-soft: #1b2b37;
+    --good: #8ccb92; --good-soft: #1b2d1e; --warn: #f0a75c; --warn-soft: #33261a;
+    --bad: #f28b80; --bad-soft: #3a1e1c; --code-bg: #1f2927;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111614; --sheet: #182020; --ink: #e2e9e6; --muted: #98a6a1; --rule: #2c3734;
+  --accent: #84b9de; --accent-ink: #0d1a24; --accent-soft: #1b2b37;
+  --good: #8ccb92; --good-soft: #1b2d1e; --warn: #f0a75c; --warn-soft: #33261a;
+  --bad: #f28b80; --bad-soft: #3a1e1c; --code-bg: #1f2927;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: var(--step0); line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: var(--step3); letter-spacing: -0.01em; }
+h2 { font-size: var(--step2); }
+h3 { font-size: var(--step1); }
+p { margin: 0; }
+code, kbd { font-family: var(--font-mono); font-size: 0.92em; }
+:not(pre) > code { background: var(--code-bg); padding: 0.05em 0.35em; border-radius: 3px; overflow-wrap: anywhere; }
+.num { font-variant-numeric: tabular-nums; }
+
+.masthead { max-width: 1180px; margin: 0 auto; padding-block: 36px 28px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; border-bottom: 1px solid var(--rule); }
+.eyebrow { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--step-1); color: var(--muted); }
+.lede { max-width: 62ch; font-size: var(--step1); color: var(--muted); }
+.build { font-size: var(--step-1); color: var(--muted); }
+
+.layout { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding-block: 28px 0; }
+.toc { font-size: var(--step-1); }
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.toc a { text-decoration: none; color: var(--muted); }
+.toc a:hover { color: var(--accent); text-decoration: underline; }
+.toc .toc-title { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; }
+@media (min-width: 980px) {
+  .layout { grid-template-columns: 210px minmax(0, 1fr); gap: 48px; }
+  .toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); align-self: start; }
+  .toc ol { flex-direction: column; gap: 7px; }
+}
+
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 56px; min-width: 0; }
+section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; scroll-margin-top: 16px; }
+section > p, section > ul, section > ol { max-width: 68ch; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; }
+.sec-no { font-family: var(--font-mono); font-size: var(--step-1); color: var(--muted); }
+ul.plain, ol.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+
+/* порядок работы — настоящая последовательность, поэтому номера */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 12px; }
+.steps li { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 14px; display: grid; gap: 6px; align-content: start; }
+.steps .n { font-family: var(--font-mono); color: var(--accent); }
+.steps b { font-family: var(--font-display); font-size: var(--step1); }
+.steps span { color: var(--muted); font-size: var(--step-1); }
+
+.callout { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 12px 14px; max-width: 70ch; border-radius: 0; }
+.callout.info { border-left-color: var(--accent); background: var(--accent-soft); }
+
+.table-wrap { overflow-x: auto; max-width: 100%; }
+table { border-collapse: collapse; width: 100%; font-size: var(--step-1); }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--font-display); font-weight: 700; font-size: var(--step0); color: var(--muted); white-space: nowrap; }
+td.r, th.r { text-align: right; }
+
+.cmd { position: relative; background: var(--code-bg); border-radius: 6px; max-width: 100%; }
+.cmd pre { margin: 0; padding: 12px 92px 12px 14px; overflow-x: auto; font-family: var(--font-mono); font-size: 0.86rem; line-height: 1.5; }
+.cmd .copy { position: absolute; top: 8px; right: 8px; }
+pre.out { margin: 0; padding: 12px 14px; overflow-x: auto; background: var(--code-bg); border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.45; }
+
+button, .btn {
+  font: inherit; font-size: var(--step-1); cursor: pointer;
+  border: 1px solid var(--rule); background: var(--sheet); color: var(--ink);
+  border-radius: 5px; padding: 6px 12px; min-height: 34px;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; color: var(--ink); }
+a.btn.primary { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+a.btn:hover { border-color: var(--accent); }
+
+.wire { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--muted); vertical-align: -1px; margin-right: 4px; }
+.w-red { background: var(--wire-red); } .w-black { background: var(--wire-black); }
+.w-green { background: var(--wire-green); } .w-white { background: var(--wire-white); }
+
+/* файлы */
+.files { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.file { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; }
+.file .fn { font-family: var(--font-mono); font-size: 0.92rem; overflow-wrap: anywhere; }
+.file .fd { color: var(--muted); font-size: var(--step-1); grid-column: 1; }
+.file .btn { grid-row: 1 / span 2; grid-column: 2; }
+@media (max-width: 520px) { .file { grid-template-columns: minmax(0, 1fr); } .file .btn { grid-row: auto; grid-column: 1; justify-self: start; } }
+.dl-note { color: var(--muted); font-size: var(--step-1); }
+
+/* помощники */
+.tool { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }
+.tool-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.tool-tag { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: var(--step-1); color: var(--accent); }
+.example-note { font-size: var(--step-1); color: var(--warn); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px; }
+@media (min-width: 560px) { .field.wide { grid-column: span 2; } }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font-size: var(--step-1); color: var(--muted); }
+.field input, .field select, .field textarea {
+  font: inherit; font-family: var(--font-mono); font-size: 0.92rem; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 5px; padding: 7px 9px; min-height: 36px; width: 100%; min-width: 0;
+}
+.field input.bad { border-color: var(--bad); background: var(--bad-soft); }
+.group-title { font-family: var(--font-display); font-weight: 700; font-size: var(--step0); }
+.row-actions, .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.passport-table input { font-family: var(--font-mono); font-size: 0.9rem; width: 100%; min-width: 72px; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 7px; }
+.passport-table td { padding: 4px 6px; }
+.result { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; border-top: 1px dashed var(--rule); padding-top: 16px; min-width: 0; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-display); font-weight: 700; padding: 3px 10px; border-radius: 999px; font-size: var(--step0); }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.msgs { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: var(--step-1); }
+.msgs .bad { color: var(--bad); } .msgs .warn { color: var(--warn); } .msgs .good { color: var(--good); }
+td.ok { color: var(--good); } td.no { color: var(--bad); font-weight: 700; } td.so { color: var(--warn); }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; min-height: 30px; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.status { font-size: var(--step-1); color: var(--muted); min-height: 1.2em; }
+
+/* схема полос */
+.bands { overflow-x: auto; max-width: 100%; }
+.bands svg { display: block; width: 100%; min-width: 560px; max-width: 680px; height: auto; }
+.bands .band { fill: var(--rule); }
+.bands .band.fit { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; }
+.bands .band.pick { fill: var(--accent); }
+.bands .band-l { fill: var(--muted); font-family: var(--font-display); font-size: 13px; }
+.bands .band-l.on { fill: var(--ink); font-weight: 700; }
+.bands .span { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1; stroke-dasharray: 4 3; }
+.bands .span-t { fill: var(--warn); font-family: var(--font-display); font-size: 13px; font-weight: 700; }
+.bands .axis { stroke: var(--muted); stroke-width: 1; }
+.bands .tick { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+
+footer { max-width: 1180px; margin: 64px auto 0; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--muted); font-size: var(--step-1); display: grid; gap: 4px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="eyebrow">Логгер ACE ADL-200A · струнные датчики · памятка установщика</div>
+  <h1>Установка датчиков ADL-200A</h1>
+  <p class="lede">Как подключить ячейку давления ACE&nbsp;1910 к логгеру, перенести её паспорт в&nbsp;настройки, выбрать полосу развёртки и&nbsp;проверить показания до засыпки. Здесь же — масштабы для датчиков с выходом mV, Bridge, Resistance, RTD и&nbsp;Serial.</p>
+  <p class="build">ПО adl200a-mqtt 1.1.0 · всё на <a href="https://github.com/granyov/adl200a-mqtt">GitHub</a> · подходит и для ячейки 1911</p>
+</header>
+
+<div class="layout">
+  <nav class="toc" aria-label="Содержание">
+    <div class="toc-title">Содержание</div>
+    <ol>
+      <li><a href="#order">Порядок работы</a></li>
+      <li><a href="#files">Файлы и ПО</a></li>
+      <li><a href="#sensor">Датчик 1910</a></li>
+      <li><a href="#wiring">Подключение кабеля</a></li>
+      <li><a href="#passport">Паспорт → настройки</a></li>
+      <li><a href="#channel">Настройка канала</a></li>
+      <li><a href="#check">Проверка показаний</a></li>
+      <li><a href="#mount">Монтаж и ноль</a></li>
+      <li><a href="#trouble">Неисправности</a></li>
+      <li><a href="#mqtt">Данные в MQTT</a></li>
+      <li><a href="#analog">Другие датчики</a></li>
+      <li><a href="#journal">Журнал установки</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section id="order" aria-labelledby="h-order">
+      <div class="sec-head"><h2 id="h-order">Порядок работы</h2></div>
+      <ol class="steps">
+        <li><span class="n">1</span><b>Подключить</b><span>пары жил — к струнному входу и термистору одного канала</span></li>
+        <li><span class="n">2</span><b>Паспорт в файл</b><span>коэффициенты этой ячейки — в <code>sensors.json</code></span></li>
+        <li><span class="n">3</span><b>Настроить канал</b><span><code>channels.py --apply</code>: полоса Sweep 03 и термистор</span></li>
+        <li><span class="n">4</span><b>Проверить</b><span>живая сессия: статус <code>ok</code>, давление около нуля</span></li>
+        <li><span class="n">5</span><b>Смонтировать</b><span>снять нулевой отсчёт, записать температуру установки</span></li>
+      </ol>
+      <p class="callout">Шаги 1–4 сначала проходят <b>на столе</b>, до монтажа. После засыпки ошибку подключения или неисправную ячейку уже не исправить.</p>
+      <p>Команды выполняются на плате, к которой подключён логгер: <code>ssh -t &lt;пользователь&gt;@&lt;плата&gt;</code>. ПО ставится из <a href="#files">релиза на GitHub</a> и лежит в <code>/opt/adl200a</code>, настройки датчиков — в <code>/etc/adl200a/sensors.json</code>.</p>
+    </section>
+
+    <section id="files" aria-labelledby="h-files">
+      <div class="sec-head"><h2 id="h-files">Файлы и ПО</h2></div>
+      <div class="files">
+        <div class="file">
+          <a class="fn" href="https://github.com/granyov/adl200a-mqtt/releases/download/v1.1.0/adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz">adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz</a>
+          <span class="fd">UVON на Astra 4.7.11 arm64, без интернета: программа, Python, Mosquitto и все зависимости · 28 МБ</span>
+          <a class="btn primary" href="https://github.com/granyov/adl200a-mqtt/releases/download/v1.1.0/adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz">Скачать</a>
+        </div>
+        <div class="file">
+          <a class="fn" href="https://github.com/granyov/adl200a-mqtt/releases/download/v1.1.0/adl200a-mqtt_1.1.0_all.deb">adl200a-mqtt_1.1.0_all.deb</a>
+          <span class="fd">только программа — для Debian или Astra, где уже есть Python 3.7+, systemd и Mosquitto · 0,2 МБ</span>
+          <a class="btn" href="https://github.com/granyov/adl200a-mqtt/releases/download/v1.1.0/adl200a-mqtt_1.1.0_all.deb">Скачать</a>
+        </div>
+        <div class="file">
+          <a class="fn" href="https://github.com/granyov/adl200a-mqtt/blob/main/sensors.example.json">sensors.example.json</a>
+          <span class="fd">шаблон настроек с ячейкой s/n 587968 на канале 01</span>
+          <a class="btn" href="https://github.com/granyov/adl200a-mqtt/blob/main/sensors.example.json">Открыть</a>
+        </div>
+        <div class="file">
+          <a class="fn" href="https://github.com/granyov/adl200a-mqtt/blob/main/docs/install-ace-1910.md">install-ace-1910.md</a>
+          <span class="fd">эта инструкция одним файлом — для печати и работы без сети</span>
+          <a class="btn" href="https://github.com/granyov/adl200a-mqtt/blob/main/docs/install-ace-1910.md">Открыть</a>
+        </div>
+      </div>
+      <p class="dl-note">Все файлы версии и контрольные суммы <code>SHA256SUMS</code> — на <a href="https://github.com/granyov/adl200a-mqtt/releases/tag/v1.1.0">странице релиза 1.1.0</a>; более новые версии — в <a href="https://github.com/granyov/adl200a-mqtt/releases/latest">последнем релизе</a>.</p>
+      <h3>Установка на UVON (Astra 4.7.11 arm64)</h3>
+      <div class="cmd"><pre><code>scp adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz &lt;пользователь&gt;@&lt;плата&gt;:
+tar -xzf adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz
+cd adl200a-offline-astra-4.7.11-arm64
+sudo sh install-offline.sh
+sudo adl200a-configure /dev/ttyS5 38400</code></pre><button type="button" class="copy">Копировать</button></div>
+      <p>Первая команда — с ноутбука, остальные — на плате. Установщик сверяет контрольные суммы, архитектуру и версию ОС и в интернет не ходит. В <code>adl200a-configure</code> укажи порт, к которому подключён логгер: <code>/dev/ttyS4</code> или <code>/dev/ttyS5</code> на UVON, <code>/dev/ttyUSB0</code> для Moxa.</p>
+      <h3>Другая плата: только программа</h3>
+      <div class="cmd"><pre><code>sudo dpkg -i adl200a-mqtt_1.1.0_all.deb
+sudo adl200a-configure /dev/ttyS5 38400</code></pre><button type="button" class="copy">Копировать</button></div>
+      <p>Обновление ставится так же, поверх: <code>/etc/default/adl200a</code> и <code>/etc/adl200a/sensors.json</code> сохраняются. Проверить версию: <code>dpkg -s adl200a-mqtt | grep Version</code>.</p>
+    </section>
+
+    <section id="sensor" aria-labelledby="h-sensor">
+      <div class="sec-head"><span class="sec-no">01</span><h2 id="h-sensor">Датчик 1910</h2></div>
+      <p>Ячейка давления грунта: два стальных диска, сваренных по краю, между ними этиленгликоль. Давление на диск передаётся на струнный преобразователь. <b>Частота струны падает с ростом давления</b>: у ячейки s/n 587968 это 2991&nbsp;Гц без нагрузки и 2280&nbsp;Гц на пределе 3,5&nbsp;кгс/см².</p>
+      <div class="table-wrap"><table>
+        <tbody>
+          <tr><th>Принцип</th><td>струнный (VW), рядом термистор для температурной поправки</td></tr>
+          <tr><th>Диапазоны модели</th><td>2–70 кгс/см², точный — в паспорте ячейки</td></tr>
+          <tr><th>Разрешение / точность</th><td>0,025 % / ±0,1 % от верхнего предела (FSR)</td></tr>
+          <tr><th>Нелинейность</th><td>±0,5 % FSR</td></tr>
+          <tr><th>Перегрузка</th><td>до 150 % FSR</td></tr>
+          <tr><th>Уход нуля от температуры</th><td>менее 0,05 % FSR на °C</td></tr>
+          <tr><th>Температура работы</th><td>−40…+80 °C</td></tr>
+          <tr><th>Термистор</th><td>3 кОм при 25 °C, ±0,5 °C, −40…+105 °C</td></tr>
+          <tr><th>Герметичность</th><td>300 м водяного столба</td></tr>
+          <tr><th>Размер, масса</th><td>1910 — Ø230 мм, 4 кг; 1911 — Ø150 мм, 3 кг</td></tr>
+          <tr><th>Кабель</th><td>Ø6,4 мм, 4 жилы по 0,37 мм², экран, оболочка PU</td></tr>
+        </tbody>
+      </table></div>
+      <p class="callout info">У каждой ячейки <b>свой паспорт калибровки</b> (Calibration Sheet) с коэффициентами по серийному номеру. Чужие коэффициенты брать нельзя, даже от ячейки того же диапазона.</p>
+    </section>
+
+    <section id="wiring" aria-labelledby="h-wiring">
+      <div class="sec-head"><span class="sec-no">02</span><h2 id="h-wiring">Подключение кабеля</h2></div>
+      <p>Цвета жил — в паспорте, в блоке <b>Cable Connection</b>. Для ячейки 1910:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Пара</th><th>Жилы</th><th>Куда на логгере</th></tr></thead>
+        <tbody>
+          <tr><td>Frequency — струна</td><td><span class="wire w-red"></span>красная, <span class="wire w-black"></span>чёрная</td><td>струнный вход (VW) выбранного канала</td></tr>
+          <tr><td>Temperature — термистор</td><td><span class="wire w-green"></span>зелёная, <span class="wire w-white"></span>белая</td><td>вход термистора того же канала</td></tr>
+          <tr><td>Экран</td><td>—</td><td>клемма экрана или земли канала, если она есть</td></tr>
+        </tbody>
+      </table></div>
+      <ul class="plain">
+        <li>Клеммы — по маркировке клеммника ADL-200A.</li>
+        <li><b>Полярность значения не имеет</b>: катушка струны и термистор не полярные. Важно не перепутать пары между собой.</li>
+        <li><b>Длина кабеля на струну не влияет</b> — частота не зависит от сопротивления линии. Термистор она занижает, но мало: 25&nbsp;м кабеля 0,37&nbsp;мм² — примерно на 0,02&nbsp;°C, 300&nbsp;м — примерно на 0,2&nbsp;°C.</li>
+        <li><b>Запиши номер канала</b> (1–16) в журнал и промаркируй кабель у клеммника.</li>
+      </ul>
+      <p>Логгер подключается к плате по RS-232, 38&nbsp;400&nbsp;бод, 8N1; порт задаёт <code>adl200a-configure</code> при установке. Проверить, что логгер отвечает (подставь свой порт):</p>
+      <div class="cmd"><pre><code>sudo systemctl stop adl200a
+ADL200A_PORT=/dev/ttyS5 python3 /opt/adl200a/ace.py GTT
+sudo systemctl start adl200a</code></pre><button type="button" class="copy">Копировать</button></div>
+      <p>В ответ должно прийти время логгера: <code>&lt;&lt;!01,01,GTT:10:27:16;</code></p>
+    </section>
+
+    <section id="passport" aria-labelledby="h-passport">
+      <div class="sec-head"><span class="sec-no">03</span><h2 id="h-passport">Паспорт → настройки</h2></div>
+      <p>Коэффициенты ячейки вносятся в <code>/etc/adl200a/sensors.json</code>, по записи на канал. Помощник ниже соберёт запись из паспорта и <b>сверит её с таблицей паспорта</b>: если где-то потерян минус или перепутан коэффициент, расчёт не сойдётся с колонкой Calculated Pressure — и это будет видно до выезда.</p>
+
+      <div class="tool" id="passport-tool">
+        <div class="tool-head">
+          <span class="tool-tag">Помощник · паспорт ячейки</span>
+          <span class="example-note" id="p-example-note">В форме пример — паспорт ячейки s/n 587968. Замени данными своей ячейки.</span>
+        </div>
+
+        <div class="grid">
+          <div class="field"><label for="p-ch">Канал логгера</label><input id="p-ch" inputmode="numeric"></div>
+          <div class="field wide"><label for="p-name">Где стоит ячейка</label><input id="p-name"></div>
+        </div>
+        <div>
+          <div class="group-title">Шапка паспорта</div>
+          <div class="grid">
+            <div class="field"><label for="p-model">Model</label><input id="p-model"></div>
+            <div class="field"><label for="p-serial">Serial No.</label><input id="p-serial"></div>
+            <div class="field"><label for="p-range">Range, кгс/см²</label><input id="p-range" inputmode="decimal"></div>
+            <div class="field"><label for="p-caldate">Cal. Date</label><input id="p-caldate" type="date"></div>
+            <div class="field"><label for="p-caltemp">Cal. Temp, °C</label><input id="p-caltemp" inputmode="decimal"></div>
+          </div>
+        </div>
+        <div>
+          <div class="group-title">Таблица паспорта</div>
+          <div class="table-wrap"><table class="passport-table">
+            <thead><tr><th>Applied Pressure</th><th>Reading, Hz</th><th>Calculated Pressure</th><th></th></tr></thead>
+            <tbody id="p-rows"></tbody>
+          </table></div>
+          <div class="row-actions"><button type="button" id="p-addrow">Добавить строку</button></div>
+        </div>
+        <div>
+          <div class="group-title">Коэффициенты — со знаками, как в паспорте</div>
+          <div class="grid">
+            <div class="field"><label for="p-A">A Factor</label><input id="p-A" inputmode="decimal"></div>
+            <div class="field"><label for="p-B">B Factor</label><input id="p-B" inputmode="decimal"></div>
+            <div class="field"><label for="p-C">C Factor</label><input id="p-C" inputmode="decimal"></div>
+            <div class="field"><label for="p-G">Gage Factor</label><input id="p-G" inputmode="decimal"></div>
+            <div class="field"><label for="p-Z">Zero Reading</label><input id="p-Z" inputmode="decimal"></div>
+            <div class="field"><label for="p-Tct">Thermal Coefficient</label><input id="p-Tct" inputmode="decimal"></div>
+            <div class="field"><label for="p-Ti">Температура установки, °C</label><input id="p-Ti" inputmode="decimal" placeholder="после монтажа"></div>
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" id="p-example">Вернуть пример</button>
+          <button type="button" id="p-clear">Очистить форму</button>
+        </div>
+
+        <div class="result" aria-live="polite">
+          <div><span class="pill" id="p-pill"></span></div>
+          <ul class="msgs" id="p-msgs"></ul>
+          <div class="table-wrap"><table id="p-check">
+            <thead><tr><th class="r">Давление</th><th class="r">Hz</th><th class="r">По паспорту</th><th class="r">Расчёт</th><th class="r">Разница</th><th class="r">Линейная</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+          <div class="bands" id="p-bands"></div>
+          <div class="actions">
+            <div class="seg" role="group" aria-label="Что показать">
+              <button type="button" id="p-mode-file" aria-pressed="true">Целый файл</button>
+              <button type="button" id="p-mode-entry" aria-pressed="false">Только запись канала</button>
+            </div>
+            <button type="button" id="p-copy">Скопировать</button>
+            <button type="button" id="p-save" class="primary" data-dl>Скачать .json</button>
+            <span class="status" id="p-status"></span>
+          </div>
+          <pre class="out" id="p-json"></pre>
+          <p class="dl-note" id="p-mode-hint"></p>
+        </div>
+      </div>
+
+      <h3>Откуда что брать вручную</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Поле</th><th>Из паспорта</th><th>Пример</th></tr></thead>
+        <tbody>
+          <tr><td><code>name</code></td><td>своё: где стоит ячейка</td><td>Ячейка давления, ПК 12+40</td></tr>
+          <tr><td><code>model</code>, <code>serial</code></td><td>Model, Serial No.</td><td>1910, 587968</td></tr>
+          <tr><td><code>range</code></td><td>Range, кгс/см²</td><td class="num">3.5</td></tr>
+          <tr><td><code>cal_date</code>, <code>cal_temp_c</code></td><td>Cal. Date, Cal. Temp</td><td class="num">2025-11-25, 24.0</td></tr>
+          <tr><td><code>hz_max</code></td><td>Hz в строке 0.0 — нулевое давление</td><td class="num">2991.4</td></tr>
+          <tr><td><code>hz_min</code></td><td>Hz в последней строке — максимальное давление</td><td class="num">2280.4</td></tr>
+          <tr><td><code>polynomial</code></td><td>A, B, C Factor — со знаками</td><td class="num">-8.8515e-07, -0.00025419, 8.68208</td></tr>
+          <tr><td><code>linear</code></td><td>Gage Factor, Zero Reading</td><td class="num">-0.00093328, 8946.19</td></tr>
+          <tr><td><code>thermal_coefficient</code></td><td>Thermal Coefficient — со знаком</td><td class="num">-0.00037901</td></tr>
+          <tr><td><code>initial_temp_c</code></td><td>не из паспорта — температура при установке</td><td><code>null</code> до монтажа</td></tr>
+        </tbody>
+      </table></div>
+      <p>Остальное постоянно: <code>"sweep": "auto"</code> (полосу выберет программа), <code>"analog": "thermistor_3k"</code>, <code>"raw_unit": "hz_x100"</code>, <code>"unit": "kgf/cm2"</code>, <code>"thermistor": "3k"</code>.</p>
+      <ul class="plain">
+        <li><b>Потерянный минус</b> у A, B, Gage Factor или Thermal Coefficient — самая частая ошибка: давление выходит огромным или отрицательным.</li>
+        <li><code>8.8515e-07</code> — это 0,00000088515. Пиши как в паспорте, с точкой. Запятая вместо точки ломает файл.</li>
+      </ul>
+      <p>Внести в файл и проверить на плате:</p>
+      <div class="cmd"><pre><code>sudo nano /etc/adl200a/sensors.json
+python3 /opt/adl200a/calibration.py --check
+python3 /opt/adl200a/calibration.py --channel 1 --raw 272830</code></pre><button type="button" class="copy">Копировать</button></div>
+      <p>Последняя команда — сверка со строкой паспорта: <code>--raw</code> — частота × 100 (2728,3 Гц → <code>272830</code>), в ответе <code>"pressure": 1.3999</code> при паспортных 1.400. Статус будет <code>no_temperature</code>: без <code>--therm</code> поправка на температуру не считается, для сверки так и нужно.</p>
+    </section>
+
+    <section id="channel" aria-labelledby="h-channel">
+      <div class="sec-head"><span class="sec-no">04</span><h2 id="h-channel">Настройка канала логгера</h2></div>
+      <p>У канала два входа: <b>струнный</b> с полосой развёртки и <b>аналоговый</b> с типом датчика. Логгер возбуждает струну только в выбранной полосе частот. С завода стоит <b>Sweep 01 — 450–1200 Гц</b>, она ячейку 1910 не накрывает: датчик на ней не читается или читается со скачками. Нужна <b>Sweep 03 — 1400–3500 Гц</b>.</p>
+      <div class="bands" id="bands-static"></div>
+      <p>Sweep 04 начинается с 2400 Гц и потеряет всё выше ~2,97 кгс/см². <code>"sweep": "auto"</code> выбирает самую узкую полосу, которая целиком накрывает частоты из паспорта, — для 1910 это 03.</p>
+      <p>Сначала сухой прогон — в логгер ничего не пишется:</p>
+      <div class="cmd"><pre><code>python3 /opt/adl200a/channels.py --apply</code></pre><button type="button" class="copy">Копировать</button></div>
+      <pre class="out">≠ 01   VW Sweep 01 (450–1200 Гц) + Thermistor 3K    VW Sweep 03 (1400–3500 Гц) + Thermistor 3K
+≠ 02   VW Sweep 01 (450–1200 Гц) + Thermistor 3K    выключен (нет в файле)
+  …
+  после: включено каналов 1, развёртка ≈ 5 с
+  (сухой прогон) &gt;&gt;?1,1,SCC:1,1,1,3,20,6;</pre>
+      <ul class="plain">
+        <li>Для ячейки 1910 на канале N уходит <code>SCC:N,1,1,3,20,6</code>.</li>
+        <li><b>Каналы, которых нет в файле, выключаются.</b> Каждый лишний канал удлиняет опрос примерно на 5 секунд, а при 10–15 включённых логгер начинает тормозить. Если на других каналах есть датчики, которых ещё нет в файле, — сначала внеси их или добавь <code>--keep-others</code>.</li>
+      </ul>
+      <p>Если всё верно — записать:</p>
+      <div class="cmd"><pre><code>python3 /opt/adl200a/channels.py --apply --yes</code></pre><button type="button" class="copy">Копировать</button></div>
+      <p>Программа сама остановит службу, снимет копию старой настройки, запишет, перечитает, сверит и вернёт службу. В конце — <code>всё применилось</code>. Посмотреть настройку и откатить:</p>
+      <div class="cmd"><pre><code>python3 /opt/adl200a/channels.py --show
+python3 /opt/adl200a/channels.py --restore /var/lib/adl200a/gcc-backup.txt --yes</code></pre><button type="button" class="copy">Копировать</button></div>
+    </section>
+
+    <section id="check" aria-labelledby="h-check">
+      <div class="sec-head"><span class="sec-no">05</span><h2 id="h-check">Проверка показаний</h2></div>
+      <p>Живая сессия опрашивает логгер напрямую, новый отсчёт — каждые несколько секунд:</p>
+      <div class="cmd"><pre><code>ssh -t &lt;пользователь&gt;@&lt;плата&gt; '/opt/adl200a/live.sh -d -z -c 1'</code></pre><button type="button" class="copy">Копировать</button></div>
+      <ul class="plain">
+        <li><code>-d</code> — прямой опрос: служба на время сессии встаёт на паузу и потом возвращается.</li>
+        <li><code>-z</code> — столбец Δ: изменение от первого отсчёта сессии.</li>
+        <li><code>-c 1</code> — только канал 1. <code>-l /tmp/канал01.log</code> — записать сессию в файл.</li>
+        <li><code>ssh -t</code> обязательно: иначе Ctrl-C не дойдёт до сессии и сводки не будет.</li>
+      </ul>
+      <pre class="out">по файлу ch01: VW Sweep 03 (1400–3500 Гц) + Thermistor 3K  [полоса выбрана по сертификату]
+в приборе ch01: VW Sweep 03 (1400–3500 Гц) + Thermistor 3K
+
+   время  ch     VW t01  терм t06        Гц     digits     кгс/см²          Δ       кПа     %FSR       °C  статус
+--------  --  ---------  --------  --------  ---------  ----------  ---------  --------  -------  -------  ------
+10:27:59  01     294720      3344   2947.20     8686.0      0.2440    +0.0000     23.93    6.97%    22.53  ok</pre>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Смотреть</th><th>Норма</th></tr></thead>
+        <tbody>
+          <tr><td>Статус</td><td><code>ok</code> — струна и термистор отвечают</td></tr>
+          <tr><td>Гц</td><td>внутри диапазона паспорта; без нагрузки — около частоты нулевого давления</td></tr>
+          <tr><td>Давление без нагрузки</td><td>около нуля, в пределах нескольких тысячных кгс/см²</td></tr>
+          <tr><td>Стабильность</td><td>за 10–20 отсчётов на неподвижной ячейке размах обычно в тысячных кгс/см²; скачки на десятые — неверная полоса или плохой контакт</td></tr>
+          <tr><td>°C</td><td>правдоподобная температура среды</td></tr>
+          <tr><td>Строка «НЕ КАК В ФАЙЛЕ»</td><td>её нет; если есть — повторить настройку канала</td></tr>
+        </tbody>
+      </table></div>
+      <p>Ctrl-C завершает сессию и печатает сводку: число отсчётов, минимум, максимум, размах и дрейф.</p>
+    </section>
+
+    <section id="mount" aria-labelledby="h-mount">
+      <div class="sec-head"><span class="sec-no">06</span><h2 id="h-mount">Монтаж и нулевой отсчёт</h2></div>
+      <p>Монтаж — по проекту и руководству ACE. Из рекомендаций производителя:</p>
+      <ul class="plain">
+        <li>ячейка ставится всей рабочей поверхностью в контакт с грунтом;</li>
+        <li>для точного измерения зазоры между ячейкой, опорной плитой и металлоконструкциями заполняют эпоксидной смолой;</li>
+        <li>в насыпях ячейки обычно ставят группами по 3–5 в разных ориентациях — вертикально, горизонтально, под 45°, как в проекте.</li>
+      </ul>
+      <p>Во время засыпки держи открытой живую сессию с <code>-z</code>: столбец Δ показывает, как растёт давление, и сразу видно, не пропал ли сигнал.</p>
+      <p><b>Нулевой отсчёт.</b> После монтажа, до нагрузки, когда показания установились (температура перестала меняться — обычно через час-два), сними 10–20 отсчётов и запиши в журнал среднее: частоту, digits, давление и температуру. Эту температуру впиши в файл:</p>
+      <div class="cmd"><pre><code>"initial_temp_c": 12.4</code></pre><button type="button" class="copy">Копировать</button></div>
+      <p>От неё считается поправка <code>−Tct·(Tc − Ti)</code>. Пока там <code>null</code>, поправка идёт от температуры калибровки. Для 1910 ошибка небольшая — 0,0004 кгс/см² на градус, — но для долгих наблюдений её лучше убрать. Перезапускать ничего не нужно: консольные инструменты читают файл при каждом запуске.</p>
+    </section>
+
+    <section id="trouble" aria-labelledby="h-trouble">
+      <div class="sec-head"><span class="sec-no">07</span><h2 id="h-trouble">Если что-то не так</h2></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Что видно</th><th>Вероятная причина</th><th>Что делать</th></tr></thead>
+        <tbody>
+          <tr><td><code>обрыв</code>: VW t01 = 0, терм t06 больше 110 000</td><td>кабель не подключён, не тот канал, обрыв</td><td>проверить канал и клеммы, прозвонить кабель</td></tr>
+          <tr><td><code>нет струны</code>: VW t01 = 0, температура есть</td><td>неверная полоса, пары перепутаны, обрыв струнной пары</td><td><code>channels.py --show</code> — должна быть Sweep 03; проверить красную и чёрную жилы</td></tr>
+          <tr><td><code>нет темп.</code>: частота есть, температуры нет</td><td>обрыв или ошибка в паре термистора</td><td>проверить зелёную и белую жилы</td></tr>
+          <tr><td>строка «НЕ КАК В ФАЙЛЕ»</td><td>логгер настроен не по файлу</td><td><code>channels.py --apply</code>, затем <code>--yes</code></td></tr>
+          <tr><td>«… Гц вне полосы прибора»</td><td>полоса не накрывает датчик</td><td><code>"sweep": "auto"</code> и <code>--apply</code></td></tr>
+          <tr><td>давление скачет на десятые</td><td>неверная полоса или плохой контакт</td><td>проверить полосу и клеммы</td></tr>
+          <tr><td>давление огромное или отрицательное без нагрузки</td><td>потерян знак коэффициента, чужой паспорт</td><td>сверить с паспортом <b>этой</b> ячейки — помощник выше</td></tr>
+          <tr><td><code>масштаб?</code></td><td>не тот <code>raw_unit</code></td><td>должно быть <code>"hz_x100"</code></td></tr>
+          <tr><td><code>--apply</code>: «есть ошибки, прибор не трогаю»</td><td>ошибка в файле</td><td>исправить всё, что перечислено</td></tr>
+          <tr><td>«не удалось прочитать конфигурацию целиком»</td><td>логгер занят опросом</td><td>повторить через минуту, выключить лишние каналы</td></tr>
+          <tr><td>«логгер не ответил»</td><td>кабель RS-232, порт, питание логгера</td><td><code>ace.py GTT</code> — раздел «Подключение кабеля»</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="mqtt" aria-labelledby="h-mqtt">
+      <div class="sec-head"><span class="sec-no">08</span><h2 id="h-mqtt">Что уходит в MQTT</h2></div>
+      <p>Служба публикует <b>сырые</b> значения логгера. Пересчёт в давление в MQTT не подмешивается, чтобы ряд в базе не зависел от файла с коэффициентами, который потом могут поправить.</p>
+      <pre class="out">adl200a/ch/01   {"channel": 1, "values": {"t01": 294720, "t06": 3344}, "dev_time": "10:27:59", …}</pre>
+      <ul class="plain">
+        <li><code>t01</code> — частота струны × 100: <code>294720</code> → 2947,20 Гц.</li>
+        <li><code>t06</code> — сопротивление термистора, Ом.</li>
+        <li>Как настроен каждый канал и что значит каждый ключ — в retained-топике <code>adl200a/config</code>.</li>
+      </ul>
+      <p>Давление из сырых значений — по формуле паспорта, T — температура термистора, Ti — <code>initial_temp_c</code>:</p>
+      <pre class="out">Hz = t01 / 100
+P  = A·Hz² + B·Hz + C − Tct·(T − Ti)        кгс/см²;  × 98,0665 → кПа</pre>
+    </section>
+
+    <section id="analog" aria-labelledby="h-analog">
+      <div class="sec-head"><span class="sec-no">09</span><h2 id="h-analog">Другие датчики: mV, Bridge, Resistance, RTD, Serial</h2></div>
+      <p>Кроме струнного входа и термистора у канала ADL-200A есть аналоговые входы. В каком виде логгер передаёт их значения, на живом приборе ещё не проверялось, поэтому <b>масштаб задаёт установщик</b> — в блоке <code>analog_scale</code> записи канала:</p>
+      <pre class="out">сырое целое из логгера  × raw_multiplier  →  величина на входе (мВ, Ом, мВ/В …)
+величина на входе  →  linear | polynomial | function  →  результат (кПа, мм, °C …)</pre>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Поле</th><th>Что это</th></tr></thead>
+        <tbody>
+          <tr><td><code>sweep</code></td><td><code>null</code> — у такого датчика нет струнного входа</td></tr>
+          <tr><td><code>analog</code></td><td><code>mv</code>, <code>bridge</code>, <code>resistance</code>, <code>rtd</code> или <code>serial</code></td></tr>
+          <tr><td><code>raw_multiplier</code></td><td>во сколько раз умножить сырое целое, чтобы получить величину на входе; подбирается по эталону</td></tr>
+          <tr><td><code>linear</code></td><td>результат = <code>gage_factor</code> · (вход − <code>zero_reading</code>)</td></tr>
+          <tr><td><code>polynomial</code></td><td>результат = c0 + c1·x + c2·x², списком <code>[c0, c1, c2]</code></td></tr>
+          <tr><td><code>function</code></td><td><code>pt100</code> или <code>pt1000</code> — RTD сразу в °C по IEC 60751</td></tr>
+          <tr><td><code>unit</code>, <code>quantity</code></td><td>единица и название результата — для подписи</td></tr>
+        </tbody>
+      </table></div>
+      <ul class="plain">
+        <li>Пересчёт — что-то одно из <code>linear</code>, <code>polynomial</code>, <code>function</code>. Без пересчёта показывается только величина на входе — так и подбирается множитель.</li>
+        <li><code>bridge</code> и <code>serial</code> нельзя ставить на канал вместе со струнным входом — так решил производитель логгера.</li>
+        <li>Коэффициенты пересчёта — из паспорта своего датчика.</li>
+      </ul>
+      <h3>Как найти множитель</h3>
+      <ol class="plain">
+        <li>Пропиши канал с <code>"raw_multiplier": 1</code> и без пересчёта, включи: <code>channels.py --apply</code>, затем <code>--yes</code>.</li>
+        <li>Подай на вход эталон — калибратор напряжения, точный резистор, имитатор моста.</li>
+        <li>Посмотри сырое число в живой сессии <code>live.sh -d -c N</code>: в конце строки <code>mV(t02) 12345 мВ (пересчёт не задан)</code>.</li>
+        <li>Множитель = эталон / сырое число. Проверь на второй точке у другого края диапазона — помощник ниже сделает это сам.</li>
+      </ol>
+
+      <div class="tool" id="mult-tool">
+        <div class="tool-head">
+          <span class="tool-tag">Помощник · масштаб аналогового входа</span>
+          <span class="example-note" id="m-example-note">В форме пример: датчик с выходом мВ на канале 05.</span>
+        </div>
+        <div class="grid">
+          <div class="field"><label for="m-type">Тип входа</label>
+            <select id="m-type">
+              <option value="mv">mV — милливольты</option>
+              <option value="bridge">Bridge — мост</option>
+              <option value="resistance">Resistance — сопротивление</option>
+              <option value="rtd">RTD — платиновый термометр</option>
+              <option value="serial">Serial — цифровой датчик</option>
+            </select></div>
+          <div class="field"><label for="m-ch">Канал</label><input id="m-ch" inputmode="numeric"></div>
+          <div class="field wide"><label for="m-name">Где стоит датчик</label><input id="m-name"></div>
+          <div class="field"><label for="m-iu">Единица на входе</label><input id="m-iu"></div>
+          <div class="field" id="m-count-f"><label for="m-count">Значений у датчика</label><input id="m-count" inputmode="numeric"></div>
+        </div>
+        <div>
+          <div class="group-title">Эталон и сырое число из live.sh</div>
+          <div class="grid">
+            <div class="field"><label for="m-r1">Точка 1: эталон</label><input id="m-r1" inputmode="decimal"></div>
+            <div class="field"><label for="m-x1">Точка 1: сырое</label><input id="m-x1" inputmode="decimal"></div>
+            <div class="field"><label for="m-r2">Точка 2: эталон</label><input id="m-r2" inputmode="decimal" placeholder="необязательно"></div>
+            <div class="field"><label for="m-x2">Точка 2: сырое</label><input id="m-x2" inputmode="decimal" placeholder="необязательно"></div>
+          </div>
+        </div>
+        <div>
+          <div class="group-title">Пересчёт в результат</div>
+          <div class="grid">
+            <div class="field"><label for="m-conv">Способ</label>
+              <select id="m-conv">
+                <option value="none">нет — только величина на входе</option>
+                <option value="linear">linear — G·(x − Z)</option>
+                <option value="polynomial">polynomial — c0 + c1·x + c2·x²</option>
+                <option value="pt100">pt100 — RTD в °C</option>
+                <option value="pt1000">pt1000 — RTD в °C</option>
+              </select></div>
+            <div class="field" data-conv="linear"><label for="m-G">gage_factor</label><input id="m-G" inputmode="decimal"></div>
+            <div class="field" data-conv="linear"><label for="m-Z">zero_reading</label><input id="m-Z" inputmode="decimal"></div>
+            <div class="field" data-conv="polynomial"><label for="m-c0">c0</label><input id="m-c0" inputmode="decimal"></div>
+            <div class="field" data-conv="polynomial"><label for="m-c1">c1</label><input id="m-c1" inputmode="decimal"></div>
+            <div class="field" data-conv="polynomial"><label for="m-c2">c2</label><input id="m-c2" inputmode="decimal" placeholder="необязательно"></div>
+            <div class="field" data-conv="linear polynomial"><label for="m-unit">Единица результата</label><input id="m-unit"></div>
+            <div class="field" data-conv="linear polynomial"><label for="m-q">Величина</label><input id="m-q"></div>
+          </div>
+        </div>
+        <div class="actions"><button type="button" id="m-example">Вернуть пример</button><button type="button" id="m-clear">Очистить форму</button></div>
+        <div class="result" aria-live="polite">
+          <div><span class="pill" id="m-pill"></span></div>
+          <ul class="msgs" id="m-msgs"></ul>
+          <div class="actions">
+            <button type="button" id="m-copy">Скопировать</button>
+            <button type="button" id="m-save" class="primary" data-dl>Скачать .json</button>
+            <span class="status" id="m-status"></span>
+          </div>
+          <pre class="out" id="m-json"></pre>
+          <p class="dl-note">Это запись одного канала: вставь её внутрь <code>"channels"</code> в <code>/etc/adl200a/sensors.json</code>, затем <code>calibration.py --check</code> и <code>channels.py --apply</code>.</p>
+        </div>
+      </div>
+
+      <p class="callout"><b>Serial: формат кадров на приборе не проверен.</b> Какие значения и в каком виде приходят, неизвестно, а пересчёт применяется к значению <code>t04</code>. Если датчик отдаёт несколько значений, сейчас сохранится только одно. Перед вводом такого датчика в работу сними сессию с кадрами протокола и передай её разработчикам: <code>live.sh -d -r -c N -l /tmp/serial.log</code>.</p>
+      <p>В MQTT, как и для струнных датчиков, уходит только сырое целое: mV — <code>t02</code>, Bridge — <code>t03</code>, Serial — <code>t04</code>, Resistance — <code>t05</code>, RTD — <code>t07</code>.</p>
+    </section>
+
+    <section id="journal" aria-labelledby="h-journal">
+      <div class="sec-head"><span class="sec-no">10</span><h2 id="h-journal">Журнал установки</h2></div>
+      <p>По записи на каждую ячейку. Черновик хранится в этом браузере, пока его не очистишь.</p>
+      <div class="tool" id="journal-tool">
+        <div class="tool-head">
+          <span class="tool-tag">Помощник · журнал</span>
+          <button type="button" id="j-from-passport">Взять из паспорта</button>
+        </div>
+        <div class="grid">
+          <div class="field wide"><label for="j-place">Объект, место, пикет, отметка</label><input id="j-place"></div>
+          <div class="field"><label for="j-model">Модель</label><input id="j-model"></div>
+          <div class="field"><label for="j-serial">Серийный номер</label><input id="j-serial"></div>
+          <div class="field"><label for="j-range">Диапазон, кгс/см²</label><input id="j-range" inputmode="decimal"></div>
+          <div class="field"><label for="j-orient">Ориентация</label>
+            <select id="j-orient"><option value=""></option><option>вертикально</option><option>горизонтально</option><option>под 45°</option></select></div>
+          <div class="field"><label for="j-cable">Длина кабеля, м</label><input id="j-cable" inputmode="decimal"></div>
+          <div class="field"><label for="j-logger">Логгер (ID)</label><input id="j-logger"></div>
+          <div class="field"><label for="j-ch">Канал</label><input id="j-ch" inputmode="numeric"></div>
+          <div class="field wide"><label for="j-bench">Проверка на столе: Гц / кгс/см² / °C, дата</label><input id="j-bench"></div>
+          <div class="field"><label for="j-mounted">Монтаж: дата и время</label><input id="j-mounted" type="datetime-local"></div>
+          <div class="field wide"><label for="j-zero">Нулевой отсчёт: Гц / digits / кгс/см² / °C</label><input id="j-zero"></div>
+          <div class="field"><label for="j-ti">initial_temp_c внесён</label>
+            <select id="j-ti"><option value=""></option><option>да</option><option>нет</option></select></div>
+          <div class="field"><label for="j-apply">«всё применилось», дата</label><input id="j-apply" type="date"></div>
+          <div class="field"><label for="j-who">Установщик</label><input id="j-who"></div>
+          <div class="field" style="grid-column: 1 / -1"><label for="j-notes">Заметки</label><textarea id="j-notes" rows="3"></textarea></div>
+        </div>
+        <div class="actions">
+          <button type="button" id="j-csv" class="primary" data-dl>Скачать .csv</button>
+          <button type="button" id="j-md" data-dl>Скачать .md</button>
+          <button type="button" id="j-copy">Скопировать таблицей</button>
+          <button type="button" id="j-clear">Очистить</button>
+          <span class="status" id="j-status"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <span>ПО adl200a-mqtt 1.1.0 — <a href="https://github.com/granyov/adl200a-mqtt">github.com/granyov/adl200a-mqtt</a>. Паспортные данные в примерах — ячейка ACE 1910 s/n 587968.</span>
+  <span>Характеристики датчика — по каталогу и паспорту производителя ACE Instruments.</span>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  var store = {
+    get: function (k) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) { } }
+  };
+
+  // число из поля: принимает запятую и типографский минус; "" -> null, мусор -> NaN
+  function num(v) {
+    if (v == null) return null;
+    var s = String(v).trim().split(String.fromCharCode(0x2212)).join("-").replace(",", ".");
+    if (s === "") return null;
+    var n = Number(s);
+    return isFinite(n) ? n : NaN;
+  }
+  function fmt(x, d) { return x == null || isNaN(x) ? "—" : x.toFixed(d); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  // ---------- копирование ----------
+  function copyText(text, statusEl, sourceEl) {
+    function fallback() {
+      if (sourceEl) {
+        var range = document.createRange(); range.selectNodeContents(sourceEl);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      }
+      if (statusEl) statusEl.textContent = "Текст выделен — скопируй его вручную";
+    }
+    try {
+      navigator.clipboard.writeText(text).then(function () {
+        if (statusEl) statusEl.textContent = "Скопировано";
+      }, fallback);
+    } catch (e) { fallback(); }
+  }
+  $$(".cmd .copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var code = btn.parentNode.querySelector("code");
+      var old = btn.textContent;
+      copyText(code.textContent, null, code);
+      btn.textContent = "Скопировано";
+      setTimeout(function () { btn.textContent = old; }, 1600);
+    });
+  });
+
+  // ---------- сохранение файлов из помощников ----------
+  // В Claude страница сохраняет через встроенную возможность downloads, на обычном
+  // сайте (GitHub Pages) — штатным скачиванием браузера.
+  var dl = null;
+  var inClaude = !!(window.claude && typeof window.claude.use === "function");
+  var canSave = !inClaude;
+  function setDlUi() {
+    $$("[data-dl]").forEach(function (b) { b.disabled = !canSave; });
+  }
+  setDlUi();
+  if (inClaude) {
+    window.claude.use("downloads").then(function (ns) { dl = ns; canSave = !!ns; setDlUi(); },
+      function () { canSave = false; setDlUi(); });
+  }
+  function saveFile(filename, data, statusEl) {
+    if (!inClaude) {
+      var blob = data instanceof Blob ? data : new Blob([data], { type: "application/octet-stream" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      statusEl.textContent = "Скачан: " + filename;
+      return;
+    }
+    if (!dl) { statusEl.textContent = "Сохранение здесь недоступно — скопируй текст кнопкой «Скопировать»"; return; }
+    statusEl.textContent = "Жду подтверждения…";
+    dl.save({ filename: filename, data: data }).then(function () {
+      statusEl.textContent = "Сохранено: " + filename;
+    }, function (e) {
+      var code = e && e.code;
+      statusEl.textContent = code === "declined" ? "Сохранение отменено"
+        : code === "rate_limited" ? "Окно сохранения уже открыто — подожди и повтори"
+        : (code === "rejected_extension" || code === "extension_not_enabled") ? "Этот формат здесь недоступен"
+        : "Не удалось сохранить";
+    });
+  }
+
+  // ---------- полосы развёртки ----------
+  var BANDS = [[1, 450, 1200], [2, 800, 2000], [3, 1400, 3500], [4, 2400, 6000]];
+  function pickSweep(lo, hi) {
+    var best = null;
+    BANDS.forEach(function (b) {
+      if (b[1] <= lo && hi <= b[2] && (!best || b[2] - b[1] < best[2] - best[1])) best = b;
+    });
+    return best ? best[0] : null;
+  }
+  function bandsSVG(lo, hi, pick) {
+    var W = 640, x0 = 150, x1 = 628, fmax = 6500, rowH = 28, top = 28;
+    var X = function (f) { return x0 + (x1 - x0) * f / fmax; };
+    var has = lo != null && hi != null && !isNaN(lo) && !isNaN(hi);
+    var s = '<svg viewBox="0 0 ' + W + ' 196" role="img" aria-label="Полосы развёртки Sweep 01–04 и диапазон частот датчика">';
+    if (has) {
+      var xa = X(lo), xb = X(hi), cx = Math.min(Math.max((xa + xb) / 2, x0 + 70), W - 80);
+      s += '<rect class="span" x="' + xa.toFixed(1) + '" y="' + (top - 8) + '" width="' + Math.max(2, xb - xa).toFixed(1) + '" height="' + (4 * rowH + 2) + '"/>';
+      s += '<text class="span-t" x="' + cx.toFixed(1) + '" y="15" text-anchor="middle">датчик ' + lo + '–' + hi + ' Гц</text>';
+    }
+    BANDS.forEach(function (b, i) {
+      var y = top + i * rowH, fits = has && b[1] <= lo && hi <= b[2];
+      var cls = b[0] === pick ? "band pick" : (fits ? "band fit" : "band");
+      s += '<text class="band-l' + (b[0] === pick ? " on" : "") + '" x="0" y="' + (y + 12) + '">Sweep 0' + b[0] + ' · ' + b[1] + '–' + b[2] + '</text>';
+      s += '<rect class="' + cls + '" x="' + X(b[1]).toFixed(1) + '" y="' + y + '" width="' + (X(b[2]) - X(b[1])).toFixed(1) + '" height="14" rx="2"/>';
+    });
+    var ay = top + 4 * rowH + 8;
+    s += '<line class="axis" x1="' + x0 + '" y1="' + ay + '" x2="' + x1 + '" y2="' + ay + '"/>';
+    for (var f = 0; f <= 6000; f += 1000) {
+      s += '<line class="axis" x1="' + X(f).toFixed(1) + '" y1="' + ay + '" x2="' + X(f).toFixed(1) + '" y2="' + (ay + 4) + '"/>';
+      s += '<text class="tick" x="' + X(f).toFixed(1) + '" y="' + (ay + 17) + '" text-anchor="middle">' + f + '</text>';
+    }
+    s += '<text class="tick" x="' + x1 + '' + '" y="' + (ay + 32) + '" text-anchor="end">частота, Гц</text>';
+    return s + "</svg>";
+  }
+  $("#bands-static").innerHTML = bandsSVG(2280.4, 2991.4, 3);
+
+  // ---------- помощник: паспорт ----------
+  var P_KEY = "adl200a-passport-v1";
+  var P_EXAMPLE = {
+    ch: "1", name: "Ячейка давления, ПК 12+40", model: "1910", serial: "587968", range: "3.5",
+    caldate: "2025-11-25", caltemp: "24", A: "-0.00000088515", B: "-0.000254190", C: "8.68208",
+    G: "-0.00093328", Z: "8946.19", Tct: "-0.00037901", Ti: "",
+    rows: [["0.0", "2991.4", "0.001"], ["0.7", "2863.1", "0.698"], ["1.4", "2728.3", "1.400"],
+           ["2.1", "2587.0", "2.101"], ["2.8", "2438.1", "2.801"], ["3.5", "2280.4", "3.499"]],
+    example: true
+  };
+  var P_FIELDS = ["ch", "name", "model", "serial", "range", "caldate", "caltemp", "A", "B", "C", "G", "Z", "Tct", "Ti"];
+  var pState = store.get(P_KEY) || JSON.parse(JSON.stringify(P_EXAMPLE));
+  var pMode = "file";
+
+  function pFill() {
+    P_FIELDS.forEach(function (k) { $("#p-" + k).value = pState[k] || ""; });
+    pRows();
+  }
+  function pRows() {
+    var tb = $("#p-rows");
+    tb.innerHTML = "";
+    pState.rows.forEach(function (row, i) {
+      var tr = document.createElement("tr");
+      ["a", "h", "c"].forEach(function (col, j) {
+        var td = document.createElement("td");
+        var inp = document.createElement("input");
+        inp.id = "p-r" + i + "-" + col;
+        inp.setAttribute("inputmode", "decimal");
+        inp.setAttribute("aria-label", ["Applied Pressure", "Reading, Hz", "Calculated Pressure"][j] + ", строка " + (i + 1));
+        inp.value = row[j] || "";
+        inp.addEventListener("input", function () { pState.rows[i][j] = inp.value; pChanged(); });
+        td.appendChild(inp); tr.appendChild(td);
+      });
+      var tdx = document.createElement("td");
+      var del = document.createElement("button");
+      del.type = "button"; del.textContent = "Убрать";
+      del.setAttribute("aria-label", "Убрать строку " + (i + 1));
+      del.addEventListener("click", function () { pState.rows.splice(i, 1); pState.example = false; pRows(); pChanged(); });
+      tdx.appendChild(del); tr.appendChild(tdx);
+      tb.appendChild(tr);
+    });
+  }
+  function pChanged(fromField) {
+    if (fromField) pState.example = false;
+    store.set(P_KEY, pState);
+    pCompute();
+  }
+  P_FIELDS.forEach(function (k) {
+    $("#p-" + k).addEventListener("input", function (e) { pState[k] = e.target.value; pChanged(true); });
+  });
+  $("#p-addrow").addEventListener("click", function () { pState.rows.push(["", "", ""]); pState.example = false; pRows(); pChanged(); });
+  $("#p-example").addEventListener("click", function () { pState = JSON.parse(JSON.stringify(P_EXAMPLE)); pFill(); pChanged(); });
+  $("#p-clear").addEventListener("click", function () {
+    pState = { rows: [["", "", ""], ["", "", ""], ["", "", ""], ["", "", ""], ["", "", ""], ["", "", ""]], example: false };
+    P_FIELDS.forEach(function (k) { pState[k] = ""; });
+    pFill(); pChanged();
+  });
+
+  function pBuild() {
+    var errs = [], warns = [], bad = {};
+    var v = {};
+    var labels = { ch: "Канал", range: "Range", caltemp: "Cal. Temp", A: "A Factor", B: "B Factor", C: "C Factor", G: "Gage Factor", Z: "Zero Reading", Tct: "Thermal Coefficient", Ti: "Температура установки" };
+    ["ch", "range", "caltemp", "A", "B", "C", "G", "Z", "Tct", "Ti"].forEach(function (k) {
+      v[k] = num(pState[k]);
+      if (v[k] !== null && isNaN(v[k])) { errs.push("В поле «" + labels[k] + "» не число: «" + pState[k] + "»"); bad[k] = true; }
+    });
+    var ch = v.ch;
+    if (ch === null) errs.push("Укажи канал логгера (1–16)");
+    else if (!(ch >= 1 && ch <= 16 && Math.round(ch) === ch)) { errs.push("Канал — целое от 1 до 16"); bad.ch = true; }
+    if (!String(pState.serial || "").trim()) warns.push("Нет серийного номера — по нему потом сверяют паспорт");
+    ["A", "B", "C"].forEach(function (k) { if (v[k] === null) errs.push("Нужен " + labels[k] + " — без него давление не посчитать"); });
+    if (v.range === null) warns.push("Нет диапазона — не будет % от предела и порога сверки по диапазону");
+
+    var rows = [];
+    pState.rows.forEach(function (r, i) {
+      var a = num(r[0]), h = num(r[1]), c = num(r[2]);
+      if ([a, h, c].some(function (x) { return x !== null && isNaN(x); })) { errs.push("В таблице, строка " + (i + 1) + ": не число"); return; }
+      if (h !== null) rows.push({ i: i + 1, a: a, h: h, c: c });
+    });
+    if (!rows.length) errs.push("Заполни таблицу паспорта — из неё берутся hz_min, hz_max и полоса развёртки");
+
+    var hzs = rows.map(function (r) { return r.h; });
+    var lo = hzs.length ? Math.min.apply(null, hzs) : null, hi = hzs.length ? Math.max.apply(null, hzs) : null;
+    var sweep = lo !== null ? pickSweep(lo, hi) : null;
+    if (lo !== null && sweep === null) errs.push("Ни одна полоса Sweep не накрывает " + lo + "–" + hi + " Гц целиком — проверь частоты в таблице");
+
+    var canP = [v.A, v.B, v.C].every(function (x) { return x !== null && !isNaN(x); });
+    var canL = [v.G, v.Z].every(function (x) { return x !== null && !isNaN(x); });
+    var tol = 0.002 + (v.range && !isNaN(v.range) ? 0.0001 * v.range : 0);
+    var fails = [], lfails = [], maxd = 0;
+    rows.forEach(function (r) {
+      r.p = canP ? v.A * r.h * r.h + v.B * r.h + v.C : null;
+      r.d = r.p !== null && r.c !== null ? r.p - r.c : null;
+      r.ok = r.d === null ? null : Math.abs(r.d) <= tol;
+      if (r.ok === false) fails.push(r.i);
+      if (r.d !== null) maxd = Math.max(maxd, Math.abs(r.d));
+      r.l = canL ? v.G * (r.h * r.h / 1000 - v.Z) : null;
+      r.lok = r.l === null || r.a === null || !v.range ? null : Math.abs(r.l - r.a) <= 0.01 * v.range;
+      if (r.lok === false) lfails.push(r.i);
+    });
+    if (fails.length) errs.push("Расчёт по A, B, C не сходится с колонкой Calculated Pressure в строках " + fails.join(", ") + ". Проверь знаки, степени (e-07 — это ×10⁻⁷) и не перепутаны ли A и B");
+    if (lfails.length) warns.push("Линейная формула (Gage Factor, Zero Reading) уходит от Applied Pressure больше чем на 1 % диапазона в строках " + lfails.join(", ") + " — проверь эти два коэффициента и знак");
+    if (canP && rows.some(function (r) { return r.c !== null; }) && !fails.length) warns.unshift("ok:Коэффициенты сходятся с таблицей паспорта: расхождение не больше " + maxd.toFixed(4) + " кгс/см²");
+    if (v.Tct === null) warns.push("Нет Thermal Coefficient — температурной поправки не будет");
+    if (v.Ti === null) warns.push("Температура установки пока пустая — так и должно быть до монтажа (в файле будет null)");
+
+    var key = ch && !isNaN(ch) ? pad2(ch) : "01";
+    var entry = {
+      name: pState.name || ("канал " + key), model: pState.model || "", serial: pState.serial || "",
+      unit: "kgf/cm2", range: v.range, sweep: "auto", analog: "thermistor_3k",
+      cal_date: pState.caldate || null, cal_temp_c: v.caltemp, initial_temp_c: v.Ti,
+      raw_unit: "hz_x100", hz_min: lo, hz_max: hi,
+      polynomial: { A: v.A, B: v.B, C: v.C },
+      linear: { gage_factor: v.G, zero_reading: v.Z },
+      thermal_coefficient: v.Tct, thermistor: "3k"
+    };
+    return { errs: errs, warns: warns, bad: bad, rows: rows, lo: lo, hi: hi, sweep: sweep, key: key, entry: entry, hasCheck: canP && rows.some(function (r) { return r.c !== null; }) };
+  }
+
+  function renderMsgs(ul, errs, warns) {
+    ul.innerHTML = "";
+    errs.forEach(function (m) { var li = document.createElement("li"); li.className = "bad"; li.textContent = m; ul.appendChild(li); });
+    warns.forEach(function (m) {
+      var li = document.createElement("li");
+      if (m.indexOf("ok:") === 0) { li.className = "good"; li.textContent = m.slice(3); }
+      else { li.className = "warn"; li.textContent = m; }
+      ul.appendChild(li);
+    });
+  }
+  function pill(el, cls, text) { el.className = "pill " + cls; el.textContent = text; }
+
+  var pLast = null;
+  function pCompute() {
+    var r = pBuild();
+    pLast = r;
+    $("#p-example-note").hidden = !pState.example;
+    ["ch", "range", "caltemp", "A", "B", "C", "G", "Z", "Tct", "Ti"].forEach(function (k) { $("#p-" + k).classList.toggle("bad", !!r.bad[k]); });
+    if (r.errs.length) pill($("#p-pill"), "bad", "Есть ошибки — запись не готова");
+    else if (!r.hasCheck) pill($("#p-pill"), "warn", "Сверить не с чем: нет колонки Calculated Pressure");
+    else pill($("#p-pill"), "good", "Сходится с паспортом");
+    renderMsgs($("#p-msgs"), r.errs, r.warns);
+
+    var tb = $("#p-check tbody");
+    tb.innerHTML = r.rows.map(function (x) {
+      var mark = x.ok === null ? "" : (x.ok ? "✓" : "✗");
+      var lmark = x.lok === false ? "so" : "";
+      return "<tr><td class=\"r num\">" + (x.a === null ? "—" : x.a) + "</td><td class=\"r num\">" + x.h +
+        "</td><td class=\"r num\">" + (x.c === null ? "—" : x.c) + "</td><td class=\"r num\">" + fmt(x.p, 4) +
+        "</td><td class=\"r num " + (x.ok === false ? "no" : "") + "\">" + (x.d === null ? "—" : (x.d >= 0 ? "+" : "") + x.d.toFixed(4)) +
+        "</td><td class=\"r num " + lmark + "\">" + fmt(x.l, 4) + "</td><td class=\"" + (x.ok === false ? "no" : "ok") + "\">" + mark + "</td></tr>";
+    }).join("");
+    $("#p-bands").innerHTML = r.lo !== null ? bandsSVG(r.lo, r.hi, r.sweep) : "";
+    pJson();
+  }
+  function pText() {
+    var r = pLast;
+    var entryText = JSON.stringify(r.entry, null, 2);
+    if (pMode === "entry") return '"' + r.key + '": ' + entryText;
+    var doc = { channels: {} };
+    doc.channels[r.key] = r.entry;
+    return JSON.stringify(doc, null, 2);
+  }
+  function pJson() {
+    $("#p-json").textContent = pText();
+    $("#p-mode-hint").textContent = pMode === "entry"
+      ? "Вставь эту запись внутрь \"channels\" в /etc/adl200a/sensors.json — через запятую после соседних каналов."
+      : "Целый файл — если других каналов в /etc/adl200a/sensors.json нет. Иначе возьми «Только запись канала».";
+    var blocked = pLast.errs.length > 0;
+    $("#p-save").disabled = !canSave || blocked;
+    $("#p-save").title = blocked ? "Сначала исправь ошибки" : "";
+  }
+  $("#p-mode-file").addEventListener("click", function () { pMode = "file"; this.setAttribute("aria-pressed", "true"); $("#p-mode-entry").setAttribute("aria-pressed", "false"); pJson(); });
+  $("#p-mode-entry").addEventListener("click", function () { pMode = "entry"; this.setAttribute("aria-pressed", "true"); $("#p-mode-file").setAttribute("aria-pressed", "false"); pJson(); });
+  $("#p-copy").addEventListener("click", function () { copyText(pText(), $("#p-status"), $("#p-json")); });
+  $("#p-save").addEventListener("click", function () {
+    var r = pLast;
+    var name = (pMode === "entry" ? "channel-" : "sensors-") + r.key + (r.entry.serial ? "-" + r.entry.serial.replace(/[^\w.-]+/g, "") : "") + ".json";
+    saveFile(name, pText() + "\n", $("#p-status"));
+  });
+
+  // ---------- помощник: масштаб аналогового входа ----------
+  var M_KEY = "adl200a-scale-v1";
+  var M_UNITS = { mv: "мВ", bridge: "мВ/В", resistance: "Ом", rtd: "Ом", serial: "" };
+  var M_LABEL = { mv: "mV", bridge: "Bridge", resistance: "Resistance", rtd: "RTD", serial: "Serial sensor" };
+  var M_KEYCODE = { mv: "t02", bridge: "t03", serial: "t04", resistance: "t05", rtd: "t07" };
+  var M_EXAMPLE = { type: "mv", ch: "5", name: "Датчик давления с выходом мВ", iu: "мВ", count: "", r1: "12.345", x1: "12345", r2: "45.000", x2: "45000",
+    conv: "linear", G: "2.0", Z: "0.5", c0: "", c1: "", c2: "", unit: "кПа", q: "давление", example: true };
+  var M_FIELDS = ["type", "ch", "name", "iu", "count", "r1", "x1", "r2", "x2", "conv", "G", "Z", "c0", "c1", "c2", "unit", "q"];
+  var mState = store.get(M_KEY) || JSON.parse(JSON.stringify(M_EXAMPLE));
+
+  var CVD_A = 3.9083e-3, CVD_B = -5.775e-7, CVD_C = -4.183e-12;
+  function rtdOhms(t, r0) { var r = 1 + CVD_A * t + CVD_B * t * t; if (t < 0) r += CVD_C * (t - 100) * t * t * t; return r0 * r; }
+  function rtdC(ohms, r0) {
+    if (!(ohms >= rtdOhms(-200, r0) && ohms <= rtdOhms(850, r0))) return null;
+    var t = (-CVD_A + Math.sqrt(CVD_A * CVD_A - 4 * CVD_B * (1 - ohms / r0))) / (2 * CVD_B);
+    if (ohms < r0) {
+      for (var i = 0; i < 20; i++) {
+        var f = rtdOhms(t, r0) - ohms, h = 1e-4;
+        var d = (rtdOhms(t + h, r0) - rtdOhms(t - h, r0)) / (2 * h);
+        t -= f / d;
+        if (Math.abs(f) < 1e-9) break;
+      }
+    }
+    return t;
+  }
+
+  function mFill() { M_FIELDS.forEach(function (k) { $("#m-" + k).value = mState[k] || ""; }); mVisibility(); }
+  function mVisibility() {
+    var conv = mState.conv, isRtd = mState.type === "rtd";
+    $$("#m-conv option[value^=pt]").forEach(function (o) { o.disabled = !isRtd; });
+    if (!isRtd && /^pt/.test(conv)) { mState.conv = conv = "none"; $("#m-conv").value = "none"; }
+    $$("[data-conv]").forEach(function (f) { f.hidden = f.getAttribute("data-conv").split(" ").indexOf(conv) < 0; });
+    $("#m-count-f").hidden = mState.type !== "serial";
+  }
+  M_FIELDS.forEach(function (k) {
+    var el = $("#m-" + k);
+    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", function () {
+      mState[k] = el.value;
+      if (k === "type") {
+        if (!mState.iu || Object.keys(M_UNITS).some(function (t) { return M_UNITS[t] === mState.iu; })) { mState.iu = M_UNITS[el.value]; $("#m-iu").value = mState.iu; }
+      }
+      mState.example = false;
+      mVisibility(); store.set(M_KEY, mState); mCompute();
+    });
+  });
+  $("#m-example").addEventListener("click", function () { mState = JSON.parse(JSON.stringify(M_EXAMPLE)); mFill(); store.set(M_KEY, mState); mCompute(); });
+  $("#m-clear").addEventListener("click", function () {
+    mState = { example: false };
+    M_FIELDS.forEach(function (k) { mState[k] = ""; });
+    mState.type = "mv"; mState.conv = "none"; mState.iu = M_UNITS.mv;
+    mFill(); store.set(M_KEY, mState); mCompute();
+  });
+
+  function sig(x) { return Number(x.toPrecision(6)); }
+  var mLast = null;
+  function mCompute() {
+    var s = mState, errs = [], warns = [], bad = {};
+    var v = {};
+    ["ch", "count", "r1", "x1", "r2", "x2", "G", "Z", "c0", "c1", "c2"].forEach(function (k) {
+      v[k] = num(s[k]);
+      if (v[k] !== null && isNaN(v[k])) { errs.push("Не число в поле «" + $("label[for=m-" + k + "]").textContent + "»"); bad[k] = true; }
+    });
+    if (v.ch === null) errs.push("Укажи канал (1–16)");
+    else if (!(v.ch >= 1 && v.ch <= 16 && Math.round(v.ch) === v.ch)) { errs.push("Канал — целое от 1 до 16"); bad.ch = true; }
+    if (s.type === "serial" && !(v.count >= 1 && Math.round(v.count) === v.count)) errs.push("Для Serial укажи, сколько значений отдаёт датчик");
+
+    var k = null;
+    if (v.r1 === null || v.x1 === null) errs.push("Нужна точка 1: значение эталона и сырое число из live.sh");
+    else if (v.x1 === 0) { errs.push("Сырое число в точке 1 не может быть нулём"); bad.x1 = true; }
+    else k = sig(v.r1 / v.x1);
+    if (k !== null) warns.push("ok:Множитель raw_multiplier = " + k);
+    if (k !== null && v.r2 !== null && v.x2 !== null && v.x2 !== 0) {
+      var k2 = v.r2 / v.x2, dev = Math.abs(k2 - k) / Math.abs(k);
+      if (dev <= 0.005) warns.push("ok:Точка 2 подтверждает множитель: расхождение " + (dev * 100).toFixed(2) + " %");
+      else {
+        var slope = (v.r2 - v.r1) / (v.x2 - v.x1), off = v.r1 - slope * v.x1;
+        errs.push("Точки расходятся на " + (dev * 100).toFixed(1) + " %: у входа есть смещение (" + sig(off) + " " + (s.iu || "") + ") или нелинейность. Одного множителя мало — запиши обе точки и сообщи разработчикам");
+      }
+    } else if (k !== null) warns.push("Проверь множитель на второй точке у другого края диапазона");
+
+    var scale = { raw_multiplier: k };
+    if (s.iu) scale.input_unit = s.iu;
+    if (s.conv === "linear") {
+      if (v.G === null) errs.push("Для linear нужен gage_factor");
+      scale.linear = { gage_factor: v.G, zero_reading: v.Z === null ? 0 : v.Z };
+    } else if (s.conv === "polynomial") {
+      var cs = [v.c0, v.c1, v.c2];
+      while (cs.length && cs[cs.length - 1] === null) cs.pop();
+      if (!cs.length || cs.some(function (c) { return c === null; })) errs.push("Для polynomial заполни коэффициенты подряд: c0, c1 (c2 — по желанию)");
+      scale.polynomial = cs;
+    } else if (/^pt/.test(s.conv)) scale["function"] = s.conv;
+    if ((s.conv === "linear" || s.conv === "polynomial") && s.unit) scale.unit = s.unit;
+    if ((s.conv === "linear" || s.conv === "polynomial") && s.q) scale.quantity = s.q;
+
+    // как это увидит live.sh в точке 1
+    if (k !== null && v.x1 !== null && !errs.length) {
+      var x = v.x1 * k, res = null, unit = scale.unit || "";
+      if (s.conv === "linear") res = v.G * (x - (v.Z || 0));
+      else if (s.conv === "polynomial") res = scale.polynomial.reduce(function (a, c, i) { return a + c * Math.pow(x, i); }, 0);
+      else if (/^pt/.test(s.conv)) { res = rtdC(x, s.conv === "pt100" ? 100 : 1000); unit = "°C"; if (res === null) errs.push("Сопротивление " + sig(x) + " Ом вне диапазона " + s.conv); }
+      var head = M_LABEL[s.type] + "(" + M_KEYCODE[s.type] + ") " + sig(x) + " " + (s.iu || "");
+      if (res !== null) warns.push("ok:В live.sh в точке 1: " + head.trim() + " → " + res.toFixed(4) + " " + unit);
+      else if (s.conv === "none") warns.push("ok:В live.sh в точке 1: " + head.trim() + " (пересчёт не задан)");
+    }
+    if (s.type === "serial") warns.push("Формат кадров Serial на приборе не проверен — перед вводом в работу сними сессию с -r и передай разработчикам");
+
+    var key = v.ch && !isNaN(v.ch) ? pad2(v.ch) : "05";
+    var entry = { name: s.name || ("канал " + key), sweep: null, analog: s.type };
+    if (s.type === "serial") entry.serial_count = v.count;
+    entry.analog_scale = scale;
+    mLast = { errs: errs, key: key, entry: entry };
+
+    ["ch", "count", "r1", "x1", "r2", "x2", "G", "Z", "c0", "c1", "c2"].forEach(function (f) { $("#m-" + f).classList.toggle("bad", !!bad[f]); });
+    $("#m-example-note").hidden = !mState.example;
+    if (errs.length) pill($("#m-pill"), "bad", "Есть ошибки — запись не готова");
+    else pill($("#m-pill"), "good", "Запись канала готова");
+    renderMsgs($("#m-msgs"), errs, warns);
+    $("#m-json").textContent = mText();
+    $("#m-save").disabled = !canSave || errs.length > 0;
+  }
+  function mText() { return '"' + mLast.key + '": ' + JSON.stringify(mLast.entry, null, 2); }
+  $("#m-copy").addEventListener("click", function () { copyText(mText(), $("#m-status"), $("#m-json")); });
+  $("#m-save").addEventListener("click", function () {
+    saveFile("channel-" + mLast.key + "-" + mLast.entry.analog + ".json", mText() + "\n", $("#m-status"));
+  });
+
+  // ---------- помощник: журнал ----------
+  var J_KEY = "adl200a-journal-v1";
+  var J_FIELDS = [
+    ["place", "Объект, место, пикет, отметка"], ["model", "Модель"], ["serial", "Серийный номер"],
+    ["range", "Диапазон, кгс/см²"], ["orient", "Ориентация"], ["cable", "Длина кабеля, м"],
+    ["logger", "Логгер (ID)"], ["ch", "Канал"], ["bench", "Проверка на столе: Гц / кгс/см² / °C, дата"],
+    ["mounted", "Монтаж: дата и время"], ["zero", "Нулевой отсчёт: Гц / digits / кгс/см² / °C"],
+    ["ti", "initial_temp_c внесён в файл"], ["apply", "channels.py --apply: «всё применилось», дата"],
+    ["who", "Установщик"], ["notes", "Заметки"]
+  ];
+  var jState = store.get(J_KEY) || {};
+  J_FIELDS.forEach(function (f) {
+    var el = $("#j-" + f[0]);
+    el.value = jState[f[0]] || "";
+    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", function () { jState[f[0]] = el.value; store.set(J_KEY, jState); });
+  });
+  $("#j-from-passport").addEventListener("click", function () {
+    var map = { model: pState.model, serial: pState.serial, range: pState.range, ch: pState.ch, place: pState.name };
+    Object.keys(map).forEach(function (k) { if (map[k]) { jState[k] = map[k]; $("#j-" + k).value = map[k]; } });
+    store.set(J_KEY, jState);
+    $("#j-status").textContent = "Модель, номер, диапазон, канал и место взяты из помощника паспорта";
+  });
+  function jRows() { return J_FIELDS.map(function (f) { return [f[1], (jState[f[0]] || "").replace(/\s+/g, " ").trim()]; }); }
+  function jCsv() {
+    return "﻿Поле;Значение\r\n" + jRows().map(function (r) {
+      return r.map(function (c) { return /[;"\r\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(";");
+    }).join("\r\n") + "\r\n";
+  }
+  function jMd() {
+    return "# Журнал установки — " + (jState.model || "ячейка") + " s/n " + (jState.serial || "—") + "\n\n| Поле | Значение |\n|------|----------|\n" +
+      jRows().map(function (r) { return "| " + r[0] + " | " + (r[1] || " ").replace(/\|/g, "\\|") + " |"; }).join("\n") + "\n";
+  }
+  function jName(ext) { return "install-log-" + ((jState.serial || "cell").replace(/[^\w.-]+/g, "") || "cell") + (jState.ch ? "-ch" + pad2(Number(jState.ch) || 0) : "") + "." + ext; }
+  $("#j-csv").addEventListener("click", function () { saveFile(jName("csv"), jCsv(), $("#j-status")); });
+  $("#j-md").addEventListener("click", function () { saveFile(jName("md"), jMd(), $("#j-status")); });
+  $("#j-copy").addEventListener("click", function () { copyText(jMd(), $("#j-status"), null); });
+  $("#j-clear").addEventListener("click", function () {
+    jState = {}; store.del(J_KEY);
+    J_FIELDS.forEach(function (f) { $("#j-" + f[0]).value = ""; });
+    $("#j-status").textContent = "Журнал очищен";
+  });
+
+  // ---------- старт ----------
+  pFill(); pCompute();
+  mFill(); mCompute();
+  var _setDlUi = setDlUi;
+  setDlUi = function () { _setDlUi(); if (pLast) pJson(); if (mLast) $("#m-save").disabled = !canSave || mLast.errs.length > 0; };
+  if (location.hash) {
+    var target = document.getElementById(location.hash.slice(1));
+    if (target) setTimeout(function () { target.scrollIntoView(); }, 0);
+  }
+})();
+</script>
+</body>
+</html>

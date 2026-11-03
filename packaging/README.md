@@ -1,12 +1,17 @@
 # Офлайн-установка ADL-200A на UVON / Astra
 
 Готовый полный комплект для **Astra 4.7.11 arm64** опубликован в
-[релизе 1.0.1](https://github.com/granyov/adl200a-mqtt/releases/tag/v1.0.1).
+[релизе 1.1.0](https://github.com/granyov/adl200a-mqtt/releases/tag/v1.1.0).
 Он включает 92 deb: приложение, Python, Mosquitto и всю цепочку зависимостей.
-Проверен на UVON установкой с отключённой сетью у установщика.
+Набор системных зависимостей тот же, что в комплекте 1.0.1, проверенном на UVON
+установкой с отключённой сетью; в 1.1.0 заменён только пакет программы.
+
+Подключение датчика и настройка каналов — в
+[инструкции установщика](../docs/install-ace-1910.md) и на странице
+https://granyov.github.io/adl200a-mqtt/.
 
 ```sh
-tar -xzf adl200a-mqtt-1.0.1-offline-astra-4.7.11-arm64.tar.gz
+tar -xzf adl200a-mqtt-1.1.0-offline-astra-4.7.11-arm64.tar.gz
 cd adl200a-offline-astra-4.7.11-arm64
 sudo sh install-offline.sh
 sudo adl200a-configure /dev/ttyS5 38400
@@ -17,7 +22,22 @@ sudo adl200a-configure /dev/ttyS5 38400
 на этом аппарате требует подключённого ADL-200A. Проверка с временным
 MQTT-брокером подтвердила сохранение и доставку тестового ответа после сбоя.
 
-Версия 1.0.1 содержит тот же механизм доставки, который проверен на Wyse:
+## Что нового в 1.1.0
+
+- Настройка каналов логгера по файлу: `channels.py --apply` записывает полосу
+  развёртки Sweep и тип аналогового входа из `/etc/adl200a/sensors.json`.
+  Для ячейки ACE 1910 нужна Sweep 03; заводская Sweep 01 её не накрывает.
+- Опрос ждёт ровно те типы кадров, что настроены на каждом канале, и не даёт
+  развёрткам накладываться; разбор принимает все типы входов (mV, Bridge,
+  Serial, Resistance, RTD), а не только VW и термистор.
+- В MQTT только сырые отсчёты прибора; расшифровка каналов — в retained-топике
+  `adl200a/config`. Блок `eng` и топики `ch/NN/pressure` и т. п. убраны.
+- `live.sh` — живая консольная сессия с пересчётом по паспорту; масштабы
+  аналоговых входов задаёт установщик (`analog_scale`).
+
+## Доставка
+
+Начиная с 1.0.1 используется тот же механизм доставки, который проверен на Wyse:
 MQTT QoS 1, ожидание PUBACK, атомарный файл одного неподтверждённого цикла,
 восстановление после перезапуска и остановка нового опроса до доставки.
 Это подтверждение приёма брокером. Повторные сообщения возможны, для их
@@ -25,7 +45,7 @@ MQTT QoS 1, ожидание PUBACK, атомарный файл одного н
 
 ## Что входит в deb
 
-`adl200a-mqtt_1.0.1_all.deb` содержит программу, systemd-службу,
+`adl200a-mqtt_1.1.0_all.deb` содержит программу, systemd-службу,
 pyserial **3.5**, paho-mqtt **2.1.0** и typing_extensions **4.7.1** для Python 3.7,
 включая их лицензии. `pip` и сеть при
 установке не используются. Архитектура `all`: чистый Python, без нативных
@@ -58,7 +78,7 @@ mosquitto_sub -h 127.0.0.1 -t 'adl200a/#' -q 1 -v
 Если Python, systemd, adduser и MQTT-брокер уже установлены:
 
 ```sh
-sudo dpkg -i adl200a-mqtt_1.0.1_all.deb
+sudo dpkg -i adl200a-mqtt_1.1.0_all.deb
 sudo adl200a-configure /dev/ttyS5 38400
 ```
 
@@ -110,7 +130,7 @@ python3 packaging/build-deb.py dist
 **той же версией Astra/Debian и той же архитектурой**, что и целевой UVON:
 
 ```sh
-sudo sh packaging/build-offline.sh "$(pwd)/dist/adl200a-mqtt_1.0.1_all.deb" "$(pwd)/dist/offline-uvon"
+sudo sh packaging/build-offline.sh "$(pwd)/dist/adl200a-mqtt_1.1.0_all.deb" "$(pwd)/dist/offline-uvon"
 tar -czf dist/offline-uvon.tar.gz -C dist offline-uvon
 ```
 
